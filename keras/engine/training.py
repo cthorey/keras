@@ -597,9 +597,10 @@ class Model(Container):
             shape = self.internal_output_shapes[i]
             name = self.output_names[i]
             self.targets.append(K.placeholder(ndim=len(shape),
-                                name=name + '_target',
-                                sparse=K.is_sparse(self.outputs[i]),
-                                dtype=K.dtype(self.outputs[i])))
+                                              name=name + '_target',
+                                              sparse=K.is_sparse(
+                                                  self.outputs[i]),
+                                              dtype=K.dtype(self.outputs[i])))
 
         # prepare metrics
         self.metrics = metrics
@@ -637,7 +638,8 @@ class Model(Container):
         def append_metric(layer_num, metric_name, metric_tensor):
             """Helper function, used in loop below"""
             if len(self.output_names) > 1:
-                metric_name = self.output_layers[layer_num].name + '_' + metric_name
+                metric_name = self.output_layers[
+                    layer_num].name + '_' + metric_name
 
             self.metrics_names.append(metric_name)
             self.metrics_tensors.append(metric_tensor)
@@ -694,7 +696,8 @@ class Model(Container):
         # Sort weights by name
         if trainable_weights:
             if K.backend() == 'theano':
-                trainable_weights.sort(key=lambda x: x.name if x.name else x.auto_name)
+                trainable_weights.sort(
+                    key=lambda x: x.name if x.name else x.auto_name)
             else:
                 trainable_weights.sort(key=lambda x: x.name)
         self._collected_trainable_weights = trainable_weights
@@ -704,7 +707,8 @@ class Model(Container):
             raise RuntimeError('You must compile your model before using it.')
         if self.train_function is None:
             if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
-                inputs = self.inputs + self.targets + self.sample_weights + [K.learning_phase()]
+                inputs = self.inputs + self.targets + \
+                    self.sample_weights + [K.learning_phase()]
             else:
                 inputs = self.inputs + self.targets + self.sample_weights
 
@@ -715,7 +719,8 @@ class Model(Container):
 
             # returns loss and metrics. Updates weights at each call.
             self.train_function = K.function(inputs,
-                                             [self.total_loss] + self.metrics_tensors,
+                                             [self.total_loss] +
+                                             self.metrics_tensors,
                                              updates=updates,
                                              **self._function_kwargs)
 
@@ -724,13 +729,15 @@ class Model(Container):
             raise RuntimeError('You must compile your model before using it.')
         if self.test_function is None:
             if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
-                inputs = self.inputs + self.targets + self.sample_weights + [K.learning_phase()]
+                inputs = self.inputs + self.targets + \
+                    self.sample_weights + [K.learning_phase()]
             else:
                 inputs = self.inputs + self.targets + self.sample_weights
             # return loss and metrics, no gradient updates.
             # Does update the network states.
             self.test_function = K.function(inputs,
-                                            [self.total_loss] + self.metrics_tensors,
+                                            [self.total_loss] +
+                                            self.metrics_tensors,
                                             updates=self.state_updates,
                                             **self._function_kwargs)
 
@@ -991,7 +998,8 @@ class Model(Container):
                           for (ref, sw, cw, mode)
                           in zip(y, sample_weights, class_weights, self.sample_weight_modes)]
         check_array_lengths(x, y, sample_weights)
-        check_loss_and_target_compatibility(y, self.loss_functions, self.internal_output_shapes)
+        check_loss_and_target_compatibility(
+            y, self.loss_functions, self.internal_output_shapes)
         if self.stateful and batch_size:
             if x[0].shape[0] % batch_size != 0:
                 raise ValueError('In a stateful network, '
@@ -1130,7 +1138,8 @@ class Model(Container):
         out_labels = deduped_out_labels
 
         if do_validation:
-            callback_metrics = copy.copy(out_labels) + ['val_' + n for n in out_labels]
+            callback_metrics = copy.copy(
+                out_labels) + ['val_' + n for n in out_labels]
         else:
             callback_metrics = copy.copy(out_labels)
 
@@ -1746,7 +1755,8 @@ class Model(Container):
                     all_outs.append(np.zeros(shape, dtype=K.floatx()))
 
             for i, out in enumerate(outs):
-                all_outs[i][processed_samples:(processed_samples + nb_samples)] = out
+                all_outs[i][processed_samples:(
+                    processed_samples + nb_samples)] = out
             processed_samples += nb_samples
 
         _stop.set()
@@ -1759,3 +1769,38 @@ class Model(Container):
         if len(all_outs) == 1:
             return all_outs[0]
         return all_outs
+
+    def forward_pass_from_generator(self, generator, N=None):
+        '''
+        Customize the forward pass to ease the dumping
+        of features from an architecture (egg: VGG16).
+        To use instead of **predict_generator**.
+
+        In contrast to predict_generator, this method return not
+        only the prediction, but also the labels, a dictionary that
+        maps the label to their indices and the class mode
+        use.
+
+        '''
+        # forward pass
+        features = []
+        labels = []
+        n = 0
+        if N is None:
+            N = generator.nb_sample
+        total = N / generator.batch_size
+        for i, batch in tqdm(enumerate(generator), total=total):
+            X_batch, y_batch = batch
+            n += X_batch.shape[0]
+            if n > N:
+                end = N - n
+                features.append(self.predict_on_batch(X_batch[:end]))
+                labels.append(y_batch[:end])
+                break
+            features.append(self.predict_on_batch(X_batch))
+            labels.append(y_batch)
+
+        features = np.vstack(features)
+        labels = np.vstack(labels)
+        data = (features, labels)
+        return data
