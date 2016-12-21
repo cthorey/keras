@@ -16,6 +16,7 @@ from pkg_resources import parse_version
 
 
 class CallbackList(object):
+
     def __init__(self, callbacks=[], queue_length=10):
         self.callbacks = [c for c in callbacks]
         self.queue_length = queue_length
@@ -104,6 +105,7 @@ class Callback(object):
         on_batch_end: logs include `loss`, and optionally `acc`
             (if accuracy monitoring is enabled).
     '''
+
     def __init__(self):
         pass
 
@@ -139,6 +141,7 @@ class BaseLogger(Callback):
     This callback is automatically applied to
     every Keras model.
     '''
+
     def on_epoch_begin(self, epoch, logs={}):
         self.seen = 0
         self.totals = {}
@@ -163,6 +166,7 @@ class BaseLogger(Callback):
 class ProgbarLogger(Callback):
     '''Callback that prints metrics to stdout.
     '''
+
     def on_train_begin(self, logs={}):
         self.verbose = self.params['verbose']
         self.nb_epoch = self.params['nb_epoch']
@@ -207,6 +211,7 @@ class History(Callback):
     every Keras model. The `History` object
     gets returned by the `fit` method of models.
     '''
+
     def on_train_begin(self, logs={}):
         self.epoch = []
         self.history = {}
@@ -249,6 +254,7 @@ class ModelCheckpoint(Callback):
         period: Interval (number of epochs) between checkpoints.
 
     '''
+
     def __init__(self, filepath, monitor='val_loss', verbose=0,
                  save_best_only=False, save_weights_only=False,
                  mode='auto', period=1):
@@ -336,6 +342,7 @@ class EarlyStopping(Callback):
             mode, the direction is automatically inferred
             from the name of the monitored quantity.
     '''
+
     def __init__(self, monitor='val_loss', min_delta=0, patience=0, verbose=0, mode='auto'):
         super(EarlyStopping, self).__init__()
 
@@ -438,6 +445,7 @@ class LearningRateScheduler(Callback):
             (integer, indexed from 0) and returns a new
             learning rate as output (float).
     '''
+
     def __init__(self, schedule):
         super(LearningRateScheduler, self).__init__()
         self.schedule = schedule
@@ -504,7 +512,10 @@ class TensorBoard(Callback):
             for layer in self.model.layers:
 
                 for weight in layer.weights:
-                    tf.histogram_summary(weight.name, weight)
+                    if parse_version(tf.__version__) >= parse_version('0.12.0') or tf.__version__.split('.')[-1] == 'head':
+                        tf.summary.histogram(weight.name, weight)
+                    else:
+                        tf.histogram_summary(weight.name, weight)
 
                     if self.write_images:
                         w_img = tf.squeeze(weight)
@@ -518,17 +529,24 @@ class TensorBoard(Callback):
 
                         w_img = tf.expand_dims(tf.expand_dims(w_img, 0), -1)
 
-                        tf.image_summary(weight.name, w_img)
+                        if parse_version(tf.__version__) >= parse_version('0.12.0') or tf.__version__.split('.')[-1] == 'head':
+                            tf.summary.image(weight.name, w_img)
+                        else:
+                            tf.image_summary(weight.name, w_img)
 
                 if hasattr(layer, 'output'):
-                    tf.histogram_summary('{}_out'.format(layer.name),
-                                         layer.output)
-        if parse_version(tf.__version__) >= parse_version('0.12.0'):
+                    if parse_version(tf.__version__) >= parse_version('0.12.0') or tf.__version__.split('.')[-1] == 'head':
+                        tf.summary.histogram('{}_out'.format(layer.name),
+                                             layer.output)
+                    else:
+                        tf.histogram_summary('{}_out'.format(layer.name),
+                                             layer.output)
+        if parse_version(tf.__version__) >= parse_version('0.12.0') or tf.__version__.split('.')[-1] == 'head':
             self.merged = tf.summary.merge_all()
         else:
             self.merged = tf.merge_all_summaries()
         if self.write_graph:
-            if parse_version(tf.__version__) >= parse_version('0.12.0'):
+            if parse_version(tf.__version__) >= parse_version('0.12.0') or tf.__version__.split('.')[-1] == 'head':
                 self.writer = tf.summary.FileWriter(self.log_dir,
                                                     self.sess.graph)
             elif parse_version(tf.__version__) >= parse_version('0.8.0'):
@@ -538,7 +556,7 @@ class TensorBoard(Callback):
                 self.writer = tf.train.SummaryWriter(self.log_dir,
                                                      self.sess.graph_def)
         else:
-            if parse_version(tf.__version__) >= parse_version('0.12.0'):
+            if parse_version(tf.__version__) >= parse_version('0.12.0') or tf.__version__.split('.')[-1] == 'head':
                 self.writer = tf.summary.FileWriter(self.log_dir)
             else:
                 self.writer = tf.train.SummaryWriter(self.log_dir)
@@ -618,7 +636,8 @@ class ReduceLROnPlateau(Callback):
 
         self.monitor = monitor
         if factor >= 1.0:
-            raise ValueError('ReduceLROnPlateau does not support a factor >= 1.0.')
+            raise ValueError(
+                'ReduceLROnPlateau does not support a factor >= 1.0.')
         self.factor = factor
         self.min_lr = min_lr
         self.epsilon = epsilon
@@ -672,7 +691,8 @@ class ReduceLROnPlateau(Callback):
                         new_lr = max(new_lr, self.min_lr)
                         K.set_value(self.model.optimizer.lr, new_lr)
                         if self.verbose > 0:
-                            print('\nEpoch %05d: reducing learning rate to %s.' % (epoch, new_lr))
+                            print('\nEpoch %05d: reducing learning rate to %s.' % (
+                                epoch, new_lr))
                         self.cooldown_counter = self.cooldown
                         self.wait = 0
                 self.wait += 1
@@ -727,7 +747,8 @@ class CSVLogger(Callback):
 
         if not self.writer:
             self.keys = sorted(logs.keys())
-            self.writer = csv.DictWriter(self.csv_file, fieldnames=['epoch'] + self.keys)
+            self.writer = csv.DictWriter(
+                self.csv_file, fieldnames=['epoch'] + self.keys)
             if self.append_header:
                 self.writer.writeheader()
 
