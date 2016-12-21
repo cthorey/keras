@@ -10,6 +10,8 @@ import threading
 
 import six
 
+from tqdm import *
+
 try:
     import queue
 except ImportError:
