@@ -257,13 +257,14 @@ class ModelCheckpoint(Callback):
 
     def __init__(self, filepath, monitor='val_loss', verbose=0,
                  save_best_only=False, save_weights_only=False,
-                 mode='auto', period=1):
+                 mode='auto', period=1, keep_only_n=None):
         super(ModelCheckpoint, self).__init__()
         self.monitor = monitor
         self.verbose = verbose
         self.filepath = filepath
         self.save_best_only = save_best_only
         self.save_weights_only = save_weights_only
+        self.keep_only_n = keep_only_n
         self.period = period
         self.epochs_since_last_save = 0
 
@@ -286,6 +287,33 @@ class ModelCheckpoint(Callback):
             else:
                 self.monitor_op = np.less
                 self.best = np.Inf
+
+    def cleanup_weigths(self, filepath):
+        '''
+        Get the list of weights and clean up so that 
+        it remains self.keep_only_n at a time
+
+        For that to work, the weight file has to be formatted
+
+        %s_{epoch:02d}-{%s:.2f}.hdf5' % (check_name, monitor)
+
+        '''
+        workdir = '/{}'.format(os.path.join(*filepath.split('/')[:-1]))
+        fname = filepath.split('/')[-1]
+        start = '_'.join(fname.split('_')[:-1])
+        weigths = [f for f in os.listdir(workdir) if f.startswith(start)]
+        if self.mode == 'min':
+            reverse = False
+        elif self.mode == 'max':
+            reverse = True
+        else:
+            raise ValueError(
+                'mode has to be either min or max: {}'.format(self.mode))
+        weigths = sorted(weigths, key=lambda x: float(
+            os.path.splitext(x)[0].split('-')[-1]), reverse=True)
+        to_clean = weigths[self.keep_only_n:]
+        for fname in to_clean:
+            os.remove(os.path.join(workdir, fname))
 
     def on_epoch_end(self, epoch, logs={}):
         self.epochs_since_last_save += 1
@@ -320,6 +348,8 @@ class ModelCheckpoint(Callback):
                     self.model.save_weights(filepath, overwrite=True)
                 else:
                     self.model.save(filepath, overwrite=True)
+            if self.keep_only_n:
+                self.cleanup_weigths(filepath)
 
 
 class EarlyStopping(Callback):
@@ -782,18 +812,22 @@ class LambdaCallback(Callback):
     # Example
         ```python
         # Print the batch number at the beginning of every batch.
-        batch_print_callback = LambdaCallback(on_batch_begin=lambda batch, logs: print(batch))
+        batch_print_callback = LambdaCallback(
+            on_batch_begin=lambda batch, logs: print(batch))
 
         # Plot the loss after every epoch.
         import numpy as np
         import matplotlib.pyplot as plt
-        plot_loss_callback = LambdaCallback(on_epoch_end=lambda epoch, logs: plt.plot(np.arange(epoch), logs['loss']))
+        plot_loss_callback = LambdaCallback(
+            on_epoch_end=lambda epoch, logs: plt.plot(np.arange(epoch), logs['loss']))
 
         # Terminate some processes after having finished model training.
         processes = ...
-        cleanup_callback = LambdaCallback(on_train_end=lambda logs: [p.terminate() for p in processes if p.is_alive()])
+        cleanup_callback = LambdaCallback(on_train_end=lambda logs: [
+                                          p.terminate() for p in processes if p.is_alive()])
 
-        model.fit(..., callbacks=[batch_print_callback, plot_loss_callback, cleanup_callback])
+        model.fit(..., callbacks=[batch_print_callback,
+                  plot_loss_callback, cleanup_callback])
         ```
 
     """
