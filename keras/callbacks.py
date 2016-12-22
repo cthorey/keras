@@ -222,7 +222,7 @@ class History(Callback):
             self.history.setdefault(k, []).append(v)
 
 
-class ModelCheckpoint(Callback):
+class ModelCheckpoint(callbacks.Callback):
     '''Save the model after every epoch.
 
     `filepath` can contain named formatting options,
@@ -274,6 +274,7 @@ class ModelCheckpoint(Callback):
                           RuntimeWarning)
             mode = 'auto'
 
+        self.mode = mode
         if mode == 'min':
             self.monitor_op = np.less
             self.best = np.Inf
@@ -298,7 +299,10 @@ class ModelCheckpoint(Callback):
         %s_{epoch:02d}-{%s:.2f}.hdf5' % (check_name, monitor)
 
         '''
-        workdir = '/{}'.format(os.path.join(*filepath.split('/')[:-1]))
+        if len(filepath.split('/')[:-1]) == 0:
+            workdir = '.'
+        else:
+            workdir = '/{}'.format(os.path.join(*filepath.split('/')[:-1]))
         fname = filepath.split('/')[-1]
         start = '_'.join(fname.split('_')[:-1])
         weigths = [f for f in os.listdir(workdir) if f.startswith(start)]
@@ -310,7 +314,7 @@ class ModelCheckpoint(Callback):
             raise ValueError(
                 'mode has to be either min or max: {}'.format(self.mode))
         weigths = sorted(weigths, key=lambda x: float(
-            os.path.splitext(x)[0].split('-')[-1]), reverse=True)
+            os.path.splitext(x)[0].split('-')[-1]), reverse=reverse)
         to_clean = weigths[self.keep_only_n:]
         for fname in to_clean:
             os.remove(os.path.join(workdir, fname))
@@ -348,7 +352,7 @@ class ModelCheckpoint(Callback):
                     self.model.save_weights(filepath, overwrite=True)
                 else:
                     self.model.save(filepath, overwrite=True)
-            if self.keep_only_n:
+            if self.keep_only_n is not None:
                 self.cleanup_weigths(filepath)
 
 
