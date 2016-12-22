@@ -222,7 +222,7 @@ class History(Callback):
             self.history.setdefault(k, []).append(v)
 
 
-class ModelCheckpoint(callbacks.Callback):
+class ModelCheckpoint(Callback):
     '''Save the model after every epoch.
 
     `filepath` can contain named formatting options,
