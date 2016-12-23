@@ -8,9 +8,17 @@ import numpy as np
 from . import backend as K
 from . import optimizers
 from .utils.io_utils import ask_to_proceed_with_overwrite
-from .engine.training import Model
+# from .engine.training import Model
 from .engine.topology import get_source_inputs, Node, Layer, Merge
 from .optimizers import optimizer_from_config
+
+# My touch
+
+
+ROOT_DIR = os.environ['ROOT_DIR']
+import sys
+sys.path.append(ROOT_DIR)
+from xkeras.engine.training import Model
 
 
 def save_model(model, filepath, overwrite=True):
@@ -177,8 +185,10 @@ def load_model(filepath, custom_objects=None):
         else:
             model._make_train_function()
         optimizer_weights_group = f['optimizer_weights']
-        optimizer_weight_names = [n.decode('utf8') for n in optimizer_weights_group.attrs['weight_names']]
-        optimizer_weight_values = [optimizer_weights_group[n] for n in optimizer_weight_names]
+        optimizer_weight_names = [
+            n.decode('utf8') for n in optimizer_weights_group.attrs['weight_names']]
+        optimizer_weight_values = [optimizer_weights_group[n]
+                                   for n in optimizer_weight_names]
         model.optimizer.set_weights(optimizer_weight_values)
     f.close()
     return model
@@ -249,6 +259,7 @@ class Sequential(Model):
             model.add(Dense(32))
         ```
     '''
+
     def __init__(self, layers=None, name=None):
         self.layers = []  # stack of layers
         self.model = None  # internal Model instance
@@ -337,7 +348,8 @@ class Sequential(Model):
             self.outputs = [output_tensor]
             # update self.inbound_nodes
             self.inbound_nodes[0].output_tensors = self.outputs
-            self.inbound_nodes[0].output_shapes = [self.outputs[0]._keras_shape]
+            self.inbound_nodes[0].output_shapes = [
+                self.outputs[0]._keras_shape]
 
         self.layers.append(layer)
         self.built = False
@@ -359,7 +371,8 @@ class Sequential(Model):
             self.outputs = [self.layers[-1].output]
             # update self.inbound_nodes
             self.inbound_nodes[0].output_tensors = self.outputs
-            self.inbound_nodes[0].output_shapes = [self.outputs[0]._keras_shape]
+            self.inbound_nodes[0].output_shapes = [
+                self.outputs[0]._keras_shape]
         self.built = False
         self._flattened_layers = None
 
@@ -409,7 +422,8 @@ class Sequential(Model):
         self.output_names = self.model.output_names
         self.input_names = self.model.input_names
 
-        # make sure child model callbacks will call the parent Sequential model:
+        # make sure child model callbacks will call the parent Sequential
+        # model:
         self.model.callback_model = self
 
         self.built = True
@@ -932,6 +946,48 @@ class Sequential(Model):
                                         nb_worker=nb_worker,
                                         pickle_safe=pickle_safe,
                                         initial_epoch=initial_epoch)
+
+    def fit_h5generator(self, generator, nb_epoch,
+                        verbose=1, callbacks=None,
+                        validation_data=None,
+                        class_weight=None,
+                        initial_epoch=0):
+        '''Fits the model on data generated batch-by-batch by
+            a Python generator.
+
+        # Arguments
+            generator: a h5generator.
+                The output of the generator must be either
+                - a tuple (inputs, targets)
+                - a tuple (inputs, targets, sample_weights).
+            nb_epoch: integer, total number of iterations on the data.
+            verbose: verbosity mode, 0, 1, or 2.
+            callbacks: list of callbacks to be called during training.
+            validation_data: this can be either
+                - a generator for the validation data
+                - a tuple (inputs, targets)
+                - a tuple (inputs, targets, sample_weights).
+            nb_val_samples: only relevant if `validation_data` is a generator.
+                number of samples to use from validation generator
+                at the end of every epoch.
+            class_weight: dictionary mapping class indices to a weight
+                for the class.
+            initial_epoch: epoch at which to start training
+                (useful for resuming a previous training run)
+
+        # Returns
+            A `History` object.
+
+        # Example
+
+        ```python
+
+        ```
+        '''
+
+        kwargs = {key: val for key, val in locals().iteritems()
+                  if key != 'self'}
+        return self.model.fit_h5generator(**kwargs)
 
     def evaluate_generator(self, generator, val_samples,
                            max_q_size=10, nb_worker=1,

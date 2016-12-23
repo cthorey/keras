@@ -19,7 +19,7 @@ confidence score.
 '''
 
 
-from keras.preprocessing.image import ImageDataGenerator
+from keras.preprocessing.image import *
 from keras.models import Model as KerasModel
 from tqdm import *
 import numpy as np

@@ -3,7 +3,7 @@ Contains a set of class/method that are built on top of keras
 library.
 
 '''
-from keras.preprocessing.image import ImageDataGenerator
+from keras.preprocessing.image import *
 from keras.models import Model as KerasModel
 from tqdm import *
 import numpy as np
