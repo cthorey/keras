@@ -1786,8 +1786,6 @@ class Model(Container):
 
         '''
         # forward pass
-        features = []
-        labels = []
         n = 0
         total = N / generator.batch_size
         for i, batch in enumerate(generator):
@@ -1795,11 +1793,11 @@ class Model(Container):
             n += X_batch.shape[0]
             if n > N:
                 end = N - n
-                features.append(self.predict_on_batch(X_batch[:end]))
-                labels.append(y_batch[:end])
+                features = self.predict_on_batch(X_batch[:end])
+                labels = y_batch[:end]
                 break
-            features.append(self.predict_on_batch(X_batch))
-            labels.append(y_batch)
+            features = self.predict_on_batch(X_batch)
+            labels = y_batch
             yield features, labels
 
     def fit_h5generator(self, generator, nb_epoch,
