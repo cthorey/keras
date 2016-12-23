@@ -1,7 +1,5 @@
 from setuptools import setup
 from setuptools import find_packages
-
-
 setup(name='Keras',
       version='1.2.0',
       description='Deep Learning for Python',

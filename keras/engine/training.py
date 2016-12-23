@@ -1773,7 +1773,7 @@ class Model(Container):
             return all_outs[0]
         return all_outs
 
-    def forward_pass_from_generator(self, generator, N=None):
+    def forward_pass_from_generator(self, generator, N):
         '''
         Customize the forward pass to ease the dumping
         of features from an architecture (egg: VGG16).
@@ -1789,10 +1789,8 @@ class Model(Container):
         features = []
         labels = []
         n = 0
-        if N is None:
-            N = generator.nb_sample
         total = N / generator.batch_size
-        for i, batch in tqdm(enumerate(generator), total=total):
+        for i, batch in enumerate(generator):
             X_batch, y_batch = batch
             n += X_batch.shape[0]
             if n > N:
@@ -1802,11 +1800,7 @@ class Model(Container):
                 break
             features.append(self.predict_on_batch(X_batch))
             labels.append(y_batch)
-
-        features = np.vstack(features)
-        labels = np.vstack(labels)
-        data = (features, labels)
-        return data
+            yield features, labels
 
     def fit_h5generator(self, generator, nb_epoch,
                         verbose=1, callbacks=None,
