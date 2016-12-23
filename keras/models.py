@@ -8,17 +8,9 @@ import numpy as np
 from . import backend as K
 from . import optimizers
 from .utils.io_utils import ask_to_proceed_with_overwrite
-# from .engine.training import Model
+from .engine.training import Model
 from .engine.topology import get_source_inputs, Node, Layer, Merge
 from .optimizers import optimizer_from_config
-
-# My touch
-
-
-ROOT_DIR = os.environ['ROOT_DIR']
-import sys
-sys.path.append(ROOT_DIR)
-from xkeras.engine.training import Model
 
 
 def save_model(model, filepath, overwrite=True):
