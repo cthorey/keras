@@ -8,7 +8,7 @@ from ..models import Model, Sequential
 from .. import backend as K
 
 
-def layer_from_config(config, custom_objects={}):
+def layer_from_config(config, custom_objects=None):
     '''
     # Arguments
         config: dict of the form {'class_name': str, 'config': dict}
@@ -20,8 +20,9 @@ def layer_from_config(config, custom_objects={}):
     '''
     # Insert custom layers into globals so they can
     # be accessed by `get_from_module`.
-    for cls_key in custom_objects:
-        globals()[cls_key] = custom_objects[cls_key]
+    if custom_objects:
+        for cls_key in custom_objects:
+            globals()[cls_key] = custom_objects[cls_key]
 
     class_name = config['class_name']
 
@@ -35,7 +36,8 @@ def layer_from_config(config, custom_objects={}):
 
     arg_spec = inspect.getargspec(layer_class.from_config)
     if 'custom_objects' in arg_spec.args:
-        return layer_class.from_config(config['config'], custom_objects=custom_objects)
+        return layer_class.from_config(config['config'],
+                                       custom_objects=custom_objects)
     else:
         return layer_class.from_config(config['config'])
 

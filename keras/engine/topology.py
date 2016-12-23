@@ -299,10 +299,10 @@ class Layer(object):
 
         # These properties will be set upon call of self.build(),
         # which itself will be called upon self.add_inbound_node if necessary.
-        if not hasattr(self, 'trainable_weights'):
-            self.trainable_weights = []
-        if not hasattr(self, 'non_trainable_weights'):
-            self.non_trainable_weights = []
+        if not hasattr(self, '_trainable_weights'):
+            self._trainable_weights = []
+        if not hasattr(self, '_non_trainable_weights'):
+            self._non_trainable_weights = []
         if not hasattr(self, 'losses'):
             self.losses = []
         if not hasattr(self, 'constraints'):
@@ -418,9 +418,9 @@ class Layer(object):
         if constraint is not None:
             self.constraints[weight] = constraint
         if trainable:
-            self.trainable_weights.append(weight)
+            self._trainable_weights.append(weight)
         else:
-            self.non_trainable_weights.append(weight)
+            self._non_trainable_weights.append(weight)
         return weight
 
     def assert_input_compatibility(self, input):
@@ -1053,16 +1053,11 @@ class InputLayer(Layer):
         self.uses_learning_phase = False
         self.trainable = False
         self.built = True
-        self.trainable_weights = []
-        self.non_trainable_weights = []
-
+        self._trainable_weights = []
+        self._non_trainable_weights = []
         self.inbound_nodes = []
         self.outbound_nodes = []
-
-        self.trainable_weights = []
-        self.non_trainable_weights = []
         self.constraints = {}
-
         self.sparse = sparse
 
         if not name:
@@ -1254,7 +1249,7 @@ class Merge(Layer):
     '''
     def __init__(self, layers=None, mode='sum', concat_axis=-1,
                  dot_axes=-1, output_shape=None, output_mask=None,
-                 arguments={}, node_indices=None, tensor_indices=None,
+                 arguments=None, node_indices=None, tensor_indices=None,
                  name=None):
         self.layers = layers
         self.mode = mode
@@ -1263,14 +1258,14 @@ class Merge(Layer):
         self._output_shape = output_shape
         self.node_indices = node_indices
         self._output_mask = output_mask
-        self.arguments = arguments
+        self.arguments = arguments if arguments else {}
 
         # Layer parameters.
         self.inbound_nodes = []
         self.outbound_nodes = []
         self.constraints = {}
-        self.trainable_weights = []
-        self.non_trainable_weights = []
+        self._trainable_weights = []
+        self._non_trainable_weights = []
         self.supports_masking = True
         self.uses_learning_phase = False
         self.input_spec = None  # Compatible with anything.
@@ -1615,7 +1610,7 @@ class Merge(Layer):
 
 def merge(inputs, mode='sum', concat_axis=-1,
           dot_axes=-1, output_shape=None, output_mask=None,
-          arguments={}, name=None):
+          arguments=None, name=None):
     '''Functional merge, to apply to Keras tensors (NOT layers).
     Returns a Keras tensor.
 
@@ -2534,7 +2529,7 @@ class Container(Layer):
         return copy.deepcopy(config)
 
     @classmethod
-    def from_config(cls, config, custom_objects={}):
+    def from_config(cls, config, custom_objects=None):
         '''Instantiates a Model from its config (output of `get_config()`).
         '''
         from keras.utils.layer_utils import layer_from_config
