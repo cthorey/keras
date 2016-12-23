@@ -1787,7 +1787,6 @@ class Model(Container):
         '''
         # forward pass
         n = 0
-        total = N / generator.batch_size
         for i, batch in enumerate(generator):
             X_batch, y_batch = batch
             n += X_batch.shape[0]
@@ -1795,6 +1794,7 @@ class Model(Container):
                 end = N - n
                 features = self.predict_on_batch(X_batch[:end])
                 labels = y_batch[:end]
+                yield features, labels
                 break
             features = self.predict_on_batch(X_batch)
             labels = y_batch
