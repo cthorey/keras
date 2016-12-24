@@ -1,44 +1,24 @@
 from boltons.iterutils import chunked_iter
 from os.path import join as ojoin
 import h5py
-import json
+import jsono
+
+from .image import Iterator
 
 
-class Iterator(object):
-
-    def __init__(self, N, batch_size, seed):
-        self.N = N
-        self.batch_size = batch_size
-        self.batch_index = 0
-        self.total_batches_seen = 0
-        self.index_generator = self._flow_index(N, batch_size, seed)
-
-    def reset(self):
-        self.batch_index = 0
-
-    def _flow_index(self, N, batch_size=32, seed=None):
-        # ensure self.batch_index is 0
-        self.reset()
-        idxs = range(N)
-        for batch_index, chunk in enumerate(chunked_iter(idxs, size=self.batch_size)):
-            self.batch_index = batch_index
-            yield batch_index, chunk
-
-    def __iter__(self):
-        # needed if we want to do something like:
-        # for x, y in data_gen.flow(...):
-        return self
-
-    def __next__(self, *args, **kwargs):
-        return self.next(*args, **kwargs)
-
-
-class H5FeatureBatchGenerator(Iterator):
+class H5FeatureIterator(Iterator):
     """
-    mini-batch generator from a already shuffle h5 file
+    mini-batch generator from a already shuffle h5 file.
+
+    Note if you want shuffle, you have to do it when 
+    you dump the feature. h5 format does not allow to slice 
+    not contigus slice.
     """
 
-    def __init__(self, feature_path, split, batch_size=5, seed=None):
+    def __init__(self, feature_path,
+                 split,
+                 batch_size=5,
+                 seed=None):
         self.feature_path = feature_path
         self.split = split
         self.batch_size = batch_size
@@ -47,7 +27,8 @@ class H5FeatureBatchGenerator(Iterator):
             open(ojoin(feature_path, 'feature_config.json'), 'r'))
         self.__dict__.update(config)
         self.N = self.get_nsample(split)
-        super(H5FeatureBatchGenerator, self).__init__(self.N, batch_size, seed)
+        # DONT CHANGE shuffle - reason in the docstring
+        super(H5FeatureIterator, self).__init__(self.N, batch_size, shuffle=False, seed)
 
     def get_nsample(self, split):
         if getattr(self, 'nsample_{}'.format(split)) is None:
@@ -62,7 +43,9 @@ class H5FeatureBatchGenerator(Iterator):
         return arr
 
     def next(self):
-        batch_idx, chunk = next(self.index_generator)
-        batch_x = self.get('X_{}'.format(self.split), chunk)
-        batch_y = self.get('y_{}'.format(self.split), chunk)
+        with self.lock:
+            index_array, current_index, current_batch_size = next(
+                self.index_generator)
+        batch_x = self.get('X_{}'.format(self.split), index_array)
+        batch_y = self.get('y_{}'.format(self.split), index_array)
         return batch_x, batch_y
