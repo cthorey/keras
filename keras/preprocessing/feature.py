@@ -1,7 +1,7 @@
 from boltons.iterutils import chunked_iter
 from os.path import join as ojoin
 import h5py
-import jsono
+import json
 
 from .image import Iterator
 
