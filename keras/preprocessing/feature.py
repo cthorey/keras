@@ -26,7 +26,7 @@ class H5FeatureIterator(Iterator):
         config = json.load(
             open(ojoin(feature_path, 'feature_config.json'), 'r'))
         self.__dict__.update(config)
-        self.N = self.get_nsample(split)
+        self.nb_sample = self.get_nsample(split)
         # DONT CHANGE shuffle - reason in the docstring
         super(H5FeatureIterator, self).__init__(
             self.N, batch_size=batch_size, shuffle=False, seed=seed)
@@ -39,6 +39,7 @@ class H5FeatureIterator(Iterator):
         return nsample
 
     def get(self, key, chunk):
+        chunk = list(chunk)  # make sure this is a list
         with h5py.File(self.hf) as hf:
             arr = hf.get(key)[chunk]
         return arr
