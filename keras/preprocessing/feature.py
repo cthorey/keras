@@ -29,7 +29,7 @@ class H5FeatureIterator(Iterator):
         self.nb_sample = self.get_nsample(split)
         # DONT CHANGE shuffle - reason in the docstring
         super(H5FeatureIterator, self).__init__(
-            self.N, batch_size=batch_size, shuffle=False, seed=seed)
+            self.nb_sample, batch_size=batch_size, shuffle=False, seed=seed)
 
     def get_nsample(self, split):
         if getattr(self, 'nsample_{}'.format(split)) is None:
