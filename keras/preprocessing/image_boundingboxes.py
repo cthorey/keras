@@ -19,7 +19,7 @@ confidence score.
 '''
 
 
-from keras.preprocessing.image import *
+from keras.preprocessing.image import ImageDataGenerator
 from keras.models import Model as KerasModel
 from tqdm import *
 import numpy as np
@@ -114,9 +114,7 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
 
     # Arguments
 
-        nbbox: Number of bboxes to output.
-        normalize_bbox: Normalizing the bbox so that the coordiantes are between 0,1
-        sort_by_size: Sort the bboxes by size, larger to smaller. 
+        grid: width/heigh of the grid cell you want use.
         featurewise_center: set input mean to 0 over the dataset.
         samplewise_center: set each sample mean to 0.
         featurewise_std_normalization: divide inputs by std of the dataset.
@@ -151,22 +149,44 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
             If you never set it, then it will be "th".
             '''
 
-    def __init__(self, nbbox=5, normalize_bbox=True, sort_by_size=True, *args, **kwargs):
+    def __init__(self,
+                 grid=32,
+                 *args, **kwargs):
         super(ImageBBoxDataGenerator, self).__init__(*args, **kwargs)
-        self.normalize_bbox = normalize_bbox
-        self.nbbox = nbbox
-        self.sort_by_size = sort_by_size
+        self.grid = grid
+
+    def bbox2grid(self, bbox):
+        x0, y0, x1, y1 = bbox
+        xmid = int((x0 + x1) / 2.0)
+        ymid = int((y0 + y1) / 2.0)
+        i = int(xmid / self.grid)
+        j = int(ymid / self.grid)
+        return j, i
+
+    def bbox2darkcoord(self, bbox, isize):
+        i, j = self.bbox2grid(bbox)
+        x0, y0, x1, y1 = bbox
+        w = (x1 - x0) / float(isize[0])
+        h = (y1 - y0) / float(isize[1])
+        xmid = (x0 + x1) / 2.0
+        ymid = (y0 + y1) / 2.0
+        xmid = (xmid - (j * self.grid + self.grid / 2.0)) / float(self.grid)
+        ymid = (ymid - (i * self.grid + self.grid / 2.0)) / float(self.grid)
+        # add 1 for the confidence
+        return xmid, ymid, w, h, 1
+
+    def darkcoord2bbox(self, bbox, isize, i, j):
+        xmid, ymid, w, h, _ = bbox
+        xmid = (j * self.grid + self.grid / 2.0) + float(self.grid) * xmid
+        ymid = (i * self.grid + self.grid / 2.0) + float(self.grid) * ymid
+        x0 = xmid - w * isize[0] / 2.0
+        y0 = ymid - h * isize[1] / 2.0
+        x1 = x0 + w * isize[0]
+        y1 = y0 + h * isize[1]
+        return x0, y0, x1, y1
 
     def arr2nlist(self, arr):
         return [list(l) for l in list(arr)]
-
-    def xy2wh(self, coord):
-        x0, y0, x1, y1 = coord
-        return [x0, y0, x1 - x0, y1 - y0]
-
-    def wh2xy(self, coord):
-        x0, y0, w, h = coord
-        return [x0, y0, x0 + w, y0 + h]
 
     def norm_bbox(self, bbox, imgw, imgh):
         '''
@@ -180,34 +200,19 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
         y0 = y0 / float(imgh)
         return [x0, y0, w, h]
 
-    def standardize_bbox(self, bboxes, imgsize):
+    def standardize_bbox(self, bboxes, isize):
         '''
         input is a pandas dataframe
         '''
-        imgw, imgh = imgsize
         # Put it in the format x0,y0,w,h
-        bboxes = [self.xy2wh(coord) for coord in bboxes]
-        if self.sort_by_size:
-            bboxes = sorted(bboxes, key=lambda bbox: bbox[
-                            2] * bbox[3], reverse=True)
-        if self.normalize_bbox:
-            bboxes = [self.norm_bbox(bbox, imgw, imgh)
-                      for bbox in bboxes]
-        # add 1 for the confidence
-        bboxes = np.array([np.array(f + [1]) for f in bboxes])
-        # fill in the array if size<nboxes
-        nbox = bboxes.shape[0]
-        if nbox == 0:
-            bboxes = np.zeros((self.nbbox, 5))
-        elif nbox < self.nbbox:
-            zeros = np.zeros((self.nbbox - nbox, 5))
-            bboxes = np.vstack((bboxes, zeros))
-        else:
-            bboxes = bboxes[:self.nbbox, :]
-
-        # flatten the array to have a nbox*5
-        bboxes = bboxes.flatten()
-        return bboxes
+        bboxes = [[self.bbox2grid(bbox), self.bbox2darkcoord(bbox, isize)]
+                  for bbox in bboxes]
+        # fill in the array
+        arr = np.zeros((isize[0] / self.grid, isize[1] / self.grid, 5))
+        if len(bboxes) > 0:
+            for (i, j), bbox in bboxes:
+                arr[i, j, :] = np.array(bbox)
+        return arr
 
     def standardize_img(self, x):
         return self.standardize(x)
@@ -321,7 +326,6 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
             target_size=target_size,
             color_mode=color_mode,
             dim_ordering=self.dim_ordering,
-            nbbox=self.nbbox,
             batch_size=batch_size,
             shuffle=shuffle,
             seed=seed,
@@ -339,7 +343,6 @@ class ImageBBoxDirectoryIterator(Iterator):
     Arguments:
         directory: path to the target directory. It should the images and a csv file 
         where each row is set of bbox coordiante (x0,y0,x1,y1)
-        nbbox : Number of bbox to output for one image. Set to 5 by default.
         target_size: tuple of integers, default: (256, 256). The dimensions to which 
         all images found will be resized.
         color_mode: one of "grayscale", "rbg". Default: "rgb". Whether the images will
@@ -355,10 +358,11 @@ class ImageBBoxDirectoryIterator(Iterator):
         save_every is a probability to not save every images.
     '''
 
-    def __init__(self, directory, data_generator,
-                 target_size=(256, 256), color_mode='rgb',
+    def __init__(self, directory,
+                 data_generator,
+                 target_size=(224, 224),
+                 color_mode='rgb',
                  dim_ordering='default',
-                 nbbox=5,
                  batch_size=32,
                  shuffle=True,
                  seed=None,
@@ -370,9 +374,12 @@ class ImageBBoxDirectoryIterator(Iterator):
             dim_ordering = K.image_dim_ordering()
         self.save_every = save_every
         self.directory = directory
-        self.nbbox = nbbox
         self.data_generator = data_generator
         self.target_size = tuple(target_size)
+
+        assert self.target_size[
+            0] % self.data_generator.grid == 0, 'The size of the grid has to be a multiple of target_size'
+
         if color_mode not in {'rgb', 'grayscale'}:
             raise ValueError('Invalid color mode:', color_mode,
                              '; expected "rgb" or "grayscale".')
@@ -397,7 +404,6 @@ class ImageBBoxDirectoryIterator(Iterator):
         # Ensure that each picture comes with bbox
         self.filenames = list(set([os.path.splitext(f)[0]
                                    for f in os.listdir(self.directory)]))
-        assert len(self.filenames) == len(os.listdir(self.directory)) / 2
         self.nb_sample = len(self.filenames)
         print('Found {} images'.format(self.nb_sample))
 
@@ -405,7 +411,8 @@ class ImageBBoxDirectoryIterator(Iterator):
             self.nb_sample, batch_size, shuffle, seed)
 
     def read_csv(self, filename):
-        data = pd.read_csv(filename, index_col=0).values
+        data = pd.read_csv(filename)
+        data = data[['x0', 'y0', 'x1', 'y1']].values
         data = self.data_generator.arr2nlist(data)
         return data
 
@@ -423,13 +430,16 @@ class ImageBBoxDirectoryIterator(Iterator):
         x0, y0, x1, y1 = bbox
         return x0 * w, y0 * h, x1 * w, y1 * h
 
-    def arr_to_bbox(self, arr, imgsize=None, scale=False):
-        s = arr.shape[0]
-        arr = arr.reshape((s / 5, 5))[:, :4]
-        bboxes = self.data_generator.arr2nlist(arr)
-        bboxes = [self.data_generator.wh2xy(bbox) for bbox in bboxes]
-        if scale:
-            bboxes = [self.rescale_bbox(bbox, imgsize) for bbox in bboxes]
+    def decode_predictions(self, arr, isize):
+        """
+        decode the array
+        """
+        mask = [list(f) for f in list(np.argwhere(arr[:, :, 4] == 1.0))]
+        bboxes = []
+        for idx in mask:
+            dbbox = arr[idx[0], idx[1]]
+            bboxes.append(
+                self.data_generator.darkcoord2bbox(dbbox, isize, *idx))
         return bboxes
 
     def next(self):
@@ -439,7 +449,9 @@ class ImageBBoxDirectoryIterator(Iterator):
         # The transformation of images is not under thread lock so it can be
         # done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape)
-        batch_y = np.zeros((current_batch_size, self.nbbox * 5))
+        grid = self.data_generator.grid
+        batch_y = np.zeros(
+            (current_batch_size, self.target_size[0] / grid, self.target_size[1] / grid, 5))
         grayscale = self.color_mode == 'grayscale'
         # build batch of image data
         for i, j in enumerate(index_array):
@@ -461,20 +473,18 @@ class ImageBBoxDirectoryIterator(Iterator):
             a = self.target_size[0] / float(imgw)
             b = self.target_size[1] / float(imgh)
             bboxes = [self.resize_bb(bbox, a, b) for bbox in bboxes]
-            x_bbox = [bbox_to_array(
-                bbox, x_img, dim_ordering=self.dim_ordering) for bbox in bboxes]
 
-            # remove random transform for the moment
             try:
+                x_bbox = [bbox_to_array(
+                    bbox, x_img, dim_ordering=self.dim_ordering) for bbox in bboxes]
                 x_img, x_bbox = self.data_generator.random_transform(
                     x_img, x_bbox)
+                x_bbox = [array_to_bbox(bbox) for bbox in x_bbox]
             except:
                 pass
             x_img = self.data_generator.standardize_img(x_img)
-
-            x_bbox = [array_to_bbox(bbox) for bbox in x_bbox]
             x_bbox = self.data_generator.standardize_bbox(
-                x_bbox, self.target_size)
+                bboxes, self.target_size)
             batch_y[i] = x_bbox
             batch_x[i] = x_img
 
@@ -493,8 +503,7 @@ class ImageBBoxDirectoryIterator(Iterator):
                     img = array_to_img(arr_bx, self.dim_ordering, scale=True)
                     draw = ImageDraw.Draw(img)
                     bboxes = self.arr_to_bbox(arr_by,
-                                              imgsize=self.target_size,
-                                              scale=self.data_generator.normalize_bbox)
+                                              imgsize=self.target_size)
                     for bbox in bboxes:
                         draw.rectangle(bbox)
                     fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,

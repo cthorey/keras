@@ -88,7 +88,7 @@ def random_channel_shift(x, intensity, channel_index=0):
     channel_images = [np.clip(x_channel + np.random.uniform(-intensity, intensity), min_x, max_x)
                       for x_channel in x]
     x = np.stack(channel_images, axis=0)
-    x = np.rollaxis(x, 0, channel_index+1)
+    x = np.rollaxis(x, 0, channel_index + 1)
     return x
 
 
@@ -106,9 +106,9 @@ def apply_transform(x, transform_matrix, channel_index=0, fill_mode='nearest', c
     final_affine_matrix = transform_matrix[:2, :2]
     final_offset = transform_matrix[:2, 2]
     channel_images = [ndi.interpolation.affine_transform(x_channel, final_affine_matrix,
-                      final_offset, order=0, mode=fill_mode, cval=cval) for x_channel in x]
+                                                         final_offset, order=0, mode=fill_mode, cval=cval) for x_channel in x]
     x = np.stack(channel_images, axis=0)
-    x = np.rollaxis(x, 0, channel_index+1)
+    x = np.rollaxis(x, 0, channel_index + 1)
     return x
 
 
@@ -238,6 +238,7 @@ class ImageDataGenerator(object):
             Keras config file at `~/.keras/keras.json`.
             If you never set it, then it will be "th".
     '''
+
     def __init__(self,
                  featurewise_center=False,
                  samplewise_center=False,
@@ -358,21 +359,25 @@ class ImageDataGenerator(object):
         img_col_index = self.col_index - 1
         img_channel_index = self.channel_index - 1
 
-        # use composition of homographies to generate final transform that needs to be applied
+        # use composition of homographies to generate final transform that
+        # needs to be applied
         if self.rotation_range:
-            theta = np.pi / 180 * np.random.uniform(-self.rotation_range, self.rotation_range)
+            theta = np.pi / 180 * \
+                np.random.uniform(-self.rotation_range, self.rotation_range)
         else:
             theta = 0
         rotation_matrix = np.array([[np.cos(theta), -np.sin(theta), 0],
                                     [np.sin(theta), np.cos(theta), 0],
                                     [0, 0, 1]])
         if self.height_shift_range:
-            tx = np.random.uniform(-self.height_shift_range, self.height_shift_range) * x.shape[img_row_index]
+            tx = np.random.uniform(-self.height_shift_range,
+                                   self.height_shift_range) * x.shape[img_row_index]
         else:
             tx = 0
 
         if self.width_shift_range:
-            ty = np.random.uniform(-self.width_shift_range, self.width_shift_range) * x.shape[img_col_index]
+            ty = np.random.uniform(-self.width_shift_range,
+                                   self.width_shift_range) * x.shape[img_col_index]
         else:
             ty = 0
 
@@ -390,19 +395,23 @@ class ImageDataGenerator(object):
         if self.zoom_range[0] == 1 and self.zoom_range[1] == 1:
             zx, zy = 1, 1
         else:
-            zx, zy = np.random.uniform(self.zoom_range[0], self.zoom_range[1], 2)
+            zx, zy = np.random.uniform(
+                self.zoom_range[0], self.zoom_range[1], 2)
         zoom_matrix = np.array([[zx, 0, 0],
                                 [0, zy, 0],
                                 [0, 0, 1]])
 
-        transform_matrix = np.dot(np.dot(np.dot(rotation_matrix, translation_matrix), shear_matrix), zoom_matrix)
+        transform_matrix = np.dot(
+            np.dot(np.dot(rotation_matrix, translation_matrix), shear_matrix), zoom_matrix)
 
         h, w = x.shape[img_row_index], x.shape[img_col_index]
-        transform_matrix = transform_matrix_offset_center(transform_matrix, h, w)
+        transform_matrix = transform_matrix_offset_center(
+            transform_matrix, h, w)
         x = apply_transform(x, transform_matrix, img_channel_index,
                             fill_mode=self.fill_mode, cval=self.cval)
         if self.channel_shift_range != 0:
-            x = random_channel_shift(x, self.channel_shift_range, img_channel_index)
+            x = random_channel_shift(
+                x, self.channel_shift_range, img_channel_index)
 
         if self.horizontal_flip:
             if np.random.random() < 0.5:
@@ -443,7 +452,8 @@ class ImageDataGenerator(object):
                 'Expected input to be images (as Numpy array) '
                 'following the dimension ordering convention "' + self.dim_ordering + '" '
                 '(channels on axis ' + str(self.channel_index) + '), i.e. expected '
-                'either 1, 3 or 4 channels on axis ' + str(self.channel_index) + '. '
+                'either 1, 3 or 4 channels on axis ' +
+                str(self.channel_index) + '. '
                 'However, it was passed an array with shape ' + str(X.shape) +
                 ' (' + str(X.shape[self.channel_index]) + ' channels).')
 
@@ -461,22 +471,26 @@ class ImageDataGenerator(object):
         if self.featurewise_center:
             self.mean = np.mean(X, axis=(0, self.row_index, self.col_index))
             broadcast_shape = [1, 1, 1]
-            broadcast_shape[self.channel_index - 1] = X.shape[self.channel_index]
+            broadcast_shape[self.channel_index -
+                            1] = X.shape[self.channel_index]
             self.mean = np.reshape(self.mean, broadcast_shape)
             X -= self.mean
 
         if self.featurewise_std_normalization:
             self.std = np.std(X, axis=(0, self.row_index, self.col_index))
             broadcast_shape = [1, 1, 1]
-            broadcast_shape[self.channel_index - 1] = X.shape[self.channel_index]
+            broadcast_shape[self.channel_index -
+                            1] = X.shape[self.channel_index]
             self.std = np.reshape(self.std, broadcast_shape)
             X /= (self.std + K.epsilon())
 
         if self.zca_whitening:
-            flatX = np.reshape(X, (X.shape[0], X.shape[1] * X.shape[2] * X.shape[3]))
+            flatX = np.reshape(
+                X, (X.shape[0], X.shape[1] * X.shape[2] * X.shape[3]))
             sigma = np.dot(flatX.T, flatX) / flatX.shape[0]
             U, S, V = linalg.svd(sigma)
-            self.principal_components = np.dot(np.dot(U, np.diag(1. / np.sqrt(S + 10e-7))), U.T)
+            self.principal_components = np.dot(
+                np.dot(U, np.diag(1. / np.sqrt(S + 10e-7))), U.T)
 
 
 class Iterator(object):
@@ -545,8 +559,10 @@ class NumpyArrayIterator(Iterator):
         if self.X.shape[channels_axis] not in {1, 3, 4}:
             raise ValueError('NumpyArrayIterator is set to use the '
                              'dimension ordering convention "' + dim_ordering + '" '
-                             '(channels on axis ' + str(channels_axis) + '), i.e. expected '
-                             'either 1, 3 or 4 channels on axis ' + str(channels_axis) + '. '
+                             '(channels on axis ' +
+                             str(channels_axis) + '), i.e. expected '
+                             'either 1, 3 or 4 channels on axis ' +
+                             str(channels_axis) + '. '
                              'However, it was passed an array with shape ' + str(self.X.shape) +
                              ' (' + str(self.X.shape[channels_axis]) + ' channels).')
         if y is not None:
@@ -558,7 +574,8 @@ class NumpyArrayIterator(Iterator):
         self.save_to_dir = save_to_dir
         self.save_prefix = save_prefix
         self.save_format = save_format
-        super(NumpyArrayIterator, self).__init__(X.shape[0], batch_size, shuffle, seed)
+        super(NumpyArrayIterator, self).__init__(
+            X.shape[0], batch_size, shuffle, seed)
 
     def next(self):
         # for python 2.x.
@@ -566,9 +583,12 @@ class NumpyArrayIterator(Iterator):
         # the indexing of each batch
         # see http://anandology.com/blog/using-iterators-and-generators/
         with self.lock:
-            index_array, current_index, current_batch_size = next(self.index_generator)
-        # The transformation of images is not under thread lock so it can be done in parallel
-        batch_x = np.zeros(tuple([current_batch_size] + list(self.X.shape)[1:]))
+            index_array, current_index, current_batch_size = next(
+                self.index_generator)
+        # The transformation of images is not under thread lock so it can be
+        # done in parallel
+        batch_x = np.zeros(
+            tuple([current_batch_size] + list(self.X.shape)[1:]))
         for i, j in enumerate(index_array):
             x = self.X[j]
             x = self.image_data_generator.random_transform(x.astype('float32'))
@@ -579,7 +599,8 @@ class NumpyArrayIterator(Iterator):
                 img = array_to_img(batch_x[i], self.dim_ordering, scale=True)
                 fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
                                                                   index=current_index + i,
-                                                                  hash=np.random.randint(1e4),
+                                                                  hash=np.random.randint(
+                                                                      1e4),
                                                                   format=self.save_format)
                 img.save(os.path.join(self.save_to_dir, fname))
         if self.y is None:
@@ -654,9 +675,11 @@ class DirectoryIterator(Iterator):
                             break
                     if is_valid:
                         self.nb_sample += 1
-        print('Found %d images belonging to %d classes.' % (self.nb_sample, self.nb_class))
+        print('Found %d images belonging to %d classes.' %
+              (self.nb_sample, self.nb_class))
 
-        # second, build an index of the images in the different class subfolders
+        # second, build an index of the images in the different class
+        # subfolders
         self.filenames = []
         self.classes = np.zeros((self.nb_sample,), dtype='int32')
         i = 0
@@ -674,13 +697,17 @@ class DirectoryIterator(Iterator):
                         i += 1
                         # add filename relative to directory
                         absolute_path = os.path.join(root, fname)
-                        self.filenames.append(os.path.relpath(absolute_path, directory))
-        super(DirectoryIterator, self).__init__(self.nb_sample, batch_size, shuffle, seed)
+                        self.filenames.append(
+                            os.path.relpath(absolute_path, directory))
+        super(DirectoryIterator, self).__init__(
+            self.nb_sample, batch_size, shuffle, seed)
 
     def next(self):
         with self.lock:
-            index_array, current_index, current_batch_size = next(self.index_generator)
-        # The transformation of images is not under thread lock so it can be done in parallel
+            index_array, current_index, current_batch_size = next(
+                self.index_generator)
+        # The transformation of images is not under thread lock so it can be
+        # done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape)
         grayscale = self.color_mode == 'grayscale'
         # build batch of image data
@@ -699,7 +726,8 @@ class DirectoryIterator(Iterator):
                 img = array_to_img(batch_x[i], self.dim_ordering, scale=True)
                 fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
                                                                   index=current_index + i,
-                                                                  hash=np.random.randint(1e4),
+                                                                  hash=np.random.randint(
+                                                                      1e4),
                                                                   format=self.save_format)
                 img.save(os.path.join(self.save_to_dir, fname))
         # build batch of labels
