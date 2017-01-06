@@ -113,8 +113,10 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
 
 
     # Arguments
+        ngrid: the regression will be done on a sgridXsgrid grid on top of the image.
+        Note that img_size%sgrid has to be zero !!!
 
-        grid: width/heigh of the grid cell you want use.
+
         featurewise_center: set input mean to 0 over the dataset.
         samplewise_center: set each sample mean to 0.
         featurewise_std_normalization: divide inputs by std of the dataset.
@@ -150,35 +152,41 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
             '''
 
     def __init__(self,
-                 grid=32,
+                 ngrid=4,
                  *args, **kwargs):
         super(ImageBBoxDataGenerator, self).__init__(*args, **kwargs)
-        self.grid = grid
+        self.ngrid = ngrid
 
-    def bbox2grid(self, bbox):
+    def bbox2grid(self, bbox, isize):
+        assert isize[0] == isize[1]
+        s = isize[0] / self.ngrid
         x0, y0, x1, y1 = bbox
         xmid = int((x0 + x1) / 2.0)
         ymid = int((y0 + y1) / 2.0)
-        i = int(xmid / self.grid)
-        j = int(ymid / self.grid)
+        i = int(xmid / s)
+        j = int(ymid / s)
         return j, i
 
     def bbox2darkcoord(self, bbox, isize):
-        i, j = self.bbox2grid(bbox)
+        assert isize[0] == isize[1]
+        s = isize[0] / self.ngrid
+        i, j = self.bbox2grid(bbox, isize)
         x0, y0, x1, y1 = bbox
         w = (x1 - x0) / float(isize[0])
         h = (y1 - y0) / float(isize[1])
         xmid = (x0 + x1) / 2.0
         ymid = (y0 + y1) / 2.0
-        xmid = (xmid - (j * self.grid + self.grid / 2.0)) / float(self.grid)
-        ymid = (ymid - (i * self.grid + self.grid / 2.0)) / float(self.grid)
+        xmid = (xmid - (j * s + s / 2.0)) / float(s)
+        ymid = (ymid - (i * s + s / 2.0)) / float(s)
         # add 1 for the confidence
         return xmid, ymid, w, h, 1
 
     def darkcoord2bbox(self, bbox, isize, i, j):
+        assert isize[0] == isize[1]
+        s = isize[0] / self.ngrid
         xmid, ymid, w, h, _ = bbox
-        xmid = (j * self.grid + self.grid / 2.0) + float(self.grid) * xmid
-        ymid = (i * self.grid + self.grid / 2.0) + float(self.grid) * ymid
+        xmid = (j * s + s / 2.0) + float(s) * xmid
+        ymid = (i * s + s / 2.0) + float(s) * ymid
         x0 = xmid - w * isize[0] / 2.0
         y0 = ymid - h * isize[1] / 2.0
         x1 = x0 + w * isize[0]
@@ -205,10 +213,10 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
         input is a pandas dataframe
         '''
         # Put it in the format x0,y0,w,h
-        bboxes = [[self.bbox2grid(bbox), self.bbox2darkcoord(bbox, isize)]
+        bboxes = [[self.bbox2grid(bbox, isize), self.bbox2darkcoord(bbox, isize)]
                   for bbox in bboxes]
         # fill in the array
-        arr = np.zeros((isize[0] / self.grid, isize[1] / self.grid, 5))
+        arr = np.zeros((self.ngrid, self.ngrid, 5))
         if len(bboxes) > 0:
             for (i, j), bbox in bboxes:
                 arr[i, j, :] = np.array(bbox)
@@ -343,6 +351,7 @@ class ImageBBoxDirectoryIterator(Iterator):
     Arguments:
         directory: path to the target directory. It should the images and a csv file 
         where each row is set of bbox coordiante (x0,y0,x1,y1)
+        nbbox : Number of bbox to output for one image. Set to 5 by default.
         target_size: tuple of integers, default: (256, 256). The dimensions to which 
         all images found will be resized.
         color_mode: one of "grayscale", "rbg". Default: "rgb". Whether the images will
@@ -378,7 +387,7 @@ class ImageBBoxDirectoryIterator(Iterator):
         self.target_size = tuple(target_size)
 
         assert self.target_size[
-            0] % self.data_generator.grid == 0, 'The size of the grid has to be a multiple of target_size'
+            0] % self.data_generator.ngrid == 0, 'The size of the grid has to be a multiple of target_size'
 
         if color_mode not in {'rgb', 'grayscale'}:
             raise ValueError('Invalid color mode:', color_mode,
@@ -449,9 +458,9 @@ class ImageBBoxDirectoryIterator(Iterator):
         # The transformation of images is not under thread lock so it can be
         # done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape)
-        grid = self.data_generator.grid
+        s = self.data_generator.ngrid
         batch_y = np.zeros(
-            (current_batch_size, self.target_size[0] / grid, self.target_size[1] / grid, 5))
+            (current_batch_size, s, s, 5))
         grayscale = self.color_mode == 'grayscale'
         # build batch of image data
         for i, j in enumerate(index_array):
