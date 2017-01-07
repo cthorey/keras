@@ -2,7 +2,7 @@
 
 This  module   contains  code  that  extent   the  keras.preprocessing
 module. In particular, it proposes two classes that allow to generate
-min-batch of image + bboxes. 
+min-batch of image + bboxes.
 
 ```
 data_gen=ImageBBoxDataGenerator(nbbox=5,normalize_bbox=True,...)
@@ -15,7 +15,7 @@ for X_batch,y_batch in generator:
 I  just   implemented  the   flow  from   directory  method   for  the
 moment. X_batch has the shape  (nbatch,targetsize) and y_batch has the
 shape  (nbatch,nbbox*5).   The  5  corresponds  to   x0,y0,x1,y1  +  a
-confidence score. 
+confidence score.
 '''
 
 
@@ -34,7 +34,7 @@ import pandas as pd
 def bbox_to_array(bbox, x, dim_ordering='tf'):
     '''
     Create an array representation for the bbox so that we can
-    apply the the image transformation to the box as well. 
+    apply the the image transformation to the box as well.
     '''
     # create a zeros matrix same size of the image
     if dim_ordering == 'tf':
@@ -66,7 +66,7 @@ def bbox_to_array(bbox, x, dim_ordering='tf'):
 
 def array_to_bbox(x, dim_ordering='tf'):
     '''
-    Inverse transformation than bbox_to_array. 
+    Inverse transformation than bbox_to_array.
     '''
     bbox = np.argwhere(x != 0)
     if dim_ordering == 'tf':
@@ -220,7 +220,7 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
         if len(bboxes) > 0:
             for (i, j), bbox in bboxes:
                 arr[i, j, :] = np.array(bbox)
-        return arr
+        return arr.flatten()
 
     def standardize_img(self, x):
         return self.standardize(x)
@@ -349,18 +349,18 @@ class ImageBBoxDirectoryIterator(Iterator):
     However, the y is a set of bounding boxes
 
     Arguments:
-        directory: path to the target directory. It should the images and a csv file 
+        directory: path to the target directory. It should the images and a csv file
         where each row is set of bbox coordiante (x0,y0,x1,y1)
         nbbox : Number of bbox to output for one image. Set to 5 by default.
-        target_size: tuple of integers, default: (256, 256). The dimensions to which 
+        target_size: tuple of integers, default: (256, 256). The dimensions to which
         all images found will be resized.
         color_mode: one of "grayscale", "rbg". Default: "rgb". Whether the images will
         be converted to have 1 or 3 color channels.
         batch_size: size of the batches of data (default: 32).
         shuffle: whether to shuffle the data (default: True)
         seed: optional random seed for shuffling and transformations.
-        save_to_dir: None or str (default: None). This allows you to optimally specify a 
-        directory to which to save the augmented pictures being generated (useful 
+        save_to_dir: None or str (default: None). This allows you to optimally specify a
+        directory to which to save the augmented pictures being generated (useful
         for visualizing what you are doing).
         save_prefix: str. Prefix to use for filenames of saved pictures (only relevant if save_to_dir is set).
         save_format: one of "png", "jpeg" (only relevant if save_to_dir is set). Default: "jpeg".
@@ -443,6 +443,8 @@ class ImageBBoxDirectoryIterator(Iterator):
         """
         decode the array
         """
+        s = self.data_generator.ngrid
+        arr = arr.reshape(s, s, 5)
         mask = [list(f) for f in list(np.argwhere(arr[:, :, 4] == 1.0))]
         bboxes = []
         for idx in mask:
@@ -459,8 +461,7 @@ class ImageBBoxDirectoryIterator(Iterator):
         # done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape)
         s = self.data_generator.ngrid
-        batch_y = np.zeros(
-            (current_batch_size, s, s, 5))
+        batch_y = np.zeros((current_batch_size,) + (s * s * 5))
         grayscale = self.color_mode == 'grayscale'
         # build batch of image data
         for i, j in enumerate(index_array):
