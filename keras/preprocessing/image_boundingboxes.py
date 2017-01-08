@@ -461,7 +461,8 @@ class ImageBBoxDirectoryIterator(Iterator):
         # done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape)
         s = self.data_generator.ngrid
-        batch_y = np.zeros((current_batch_size,) + (s * s * 5))
+        batch_y = np.zeros(
+            (current_batch_size, s * s * 5))
         grayscale = self.color_mode == 'grayscale'
         # build batch of image data
         for i, j in enumerate(index_array):
