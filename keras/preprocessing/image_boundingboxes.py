@@ -413,6 +413,7 @@ class ImageBBoxDirectoryIterator(Iterator):
         # Ensure that each picture comes with bbox
         self.filenames = list(set([os.path.splitext(f)[0]
                                    for f in os.listdir(self.directory)]))
+        self.filenames = filter(lambda x: x not in ['info'], self.filenames)
         self.nb_sample = len(self.filenames)
         print('Found {} images'.format(self.nb_sample))
 
