@@ -435,7 +435,8 @@ class ImageBBoxDirectoryIterator(Iterator):
     def read_csv(self, filename, resize=True):
         data = pd.read_csv(filename)
         # renormalize by the target_size
-        if any(data['x0'] > 1) or any(data['x1'] > 1):
+        # check the data are normalized (1.1 to forbid some rounding error)
+        if any(data['x0'] > 1.1) or any(data['x1'] > 1.1):
             raise ValueError(
                 'Csv file containing bbox coords  must be normalized')
         if resize:
