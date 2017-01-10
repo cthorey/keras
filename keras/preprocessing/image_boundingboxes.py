@@ -186,7 +186,7 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
 
     def darkcoord2bbox(self, bbox, isize, i, j):
         """
-        Reverse transform - return a normalize bbox 
+        Reverse transform - return a normalize bbox
         """
         assert isize[0] == isize[1]
         s = isize[0] / self.ngrid
@@ -435,6 +435,9 @@ class ImageBBoxDirectoryIterator(Iterator):
     def read_csv(self, filename, resize=True):
         data = pd.read_csv(filename)
         # renormalize by the target_size
+        if any(data['x0'] > 1) or any(data['x1'] > 1):
+            raise ValueError(
+                'Csv file containing bbox coords  must be normalized')
         if resize:
             data[['x0', 'x1']] = data[['x0', 'x1']] * self.target_size[0]
             data[['y0', 'y1']] = data[['y0', 'y1']] * self.target_size[1]
@@ -459,8 +462,8 @@ class ImageBBoxDirectoryIterator(Iterator):
             dbbox = arr[idx[0], idx[1]]
             bboxes.append(
                 self.data_generator.darkcoord2bbox(dbbox, isize, *idx))
-        dbboxes = np.array(dbboxes) * isize[0]
-        dbboxes = self.data_generator.arr2l(dbboxes)
+        bboxes = np.array(bboxes) * isize[0]
+        bboxes = self.data_generator.arr2nlist(bboxes)
         return bboxes
 
     def next(self):
