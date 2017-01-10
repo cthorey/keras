@@ -168,6 +168,9 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
         return j, i
 
     def bbox2darkcoord(self, bbox, isize):
+        """
+        Assume the bbox is not normalize.
+        """
         assert isize[0] == isize[1]
         s = isize[0] / self.ngrid
         i, j = self.bbox2grid(bbox, isize)
@@ -182,6 +185,9 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
         return xmid, ymid, w, h, 1
 
     def darkcoord2bbox(self, bbox, isize, i, j):
+        """
+        Reverse transform - return a normalize bbox 
+        """
         assert isize[0] == isize[1]
         s = isize[0] / self.ngrid
         xmid, ymid, w, h, _ = bbox
@@ -191,6 +197,12 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
         y0 = ymid - h * isize[1] / 2.0
         x1 = x0 + w * isize[0]
         y1 = y0 + h * isize[1]
+
+        # normalize bbox
+        x0 = x0 / float(isize[0])
+        y0 = y0 / float(isize[1])
+        x1 = x1 / float(isize[0])
+        y1 = y1 / float(isize[1])
         return x0, y0, x1, y1
 
     def arr2nlist(self, arr):
@@ -420,20 +432,15 @@ class ImageBBoxDirectoryIterator(Iterator):
         super(ImageBBoxDirectoryIterator, self).__init__(
             self.nb_sample, batch_size, shuffle, seed)
 
-    def read_csv(self, filename):
+    def read_csv(self, filename, resize=True):
         data = pd.read_csv(filename)
+        # renormalize by the target_size
+        if resize:
+            data[['x0', 'x1']] = data[['x0', 'x1']] * self.target_size[0]
+            data[['y0', 'y1']] = data[['y0', 'y1']] * self.target_size[1]
         data = data[['x0', 'y0', 'x1', 'y1']].values
         data = self.data_generator.arr2nlist(data)
         return data
-
-    def resize_bb(self, coord, a, b):
-        '''
-        resize the bbox with the images
-        a = w_newimage/w_original_image
-        b = h_newimage/h_original_image
-        '''
-        x0, y0, x1, y1 = coord
-        return x0 * a, y0 * b, x1 * a, y1 * b
 
     def rescale_bbox(self, bbox, imgsize):
         w, h = imgsize
@@ -452,6 +459,8 @@ class ImageBBoxDirectoryIterator(Iterator):
             dbbox = arr[idx[0], idx[1]]
             bboxes.append(
                 self.data_generator.darkcoord2bbox(dbbox, isize, *idx))
+        dbboxes = np.array(dbboxes) * isize[0]
+        dbboxes = self.data_generator.arr2l(dbboxes)
         return bboxes
 
     def next(self):
@@ -480,12 +489,7 @@ class ImageBBoxDirectoryIterator(Iterator):
             # process bbox
             csv_name = '{}.csv'.format(fname)
             bboxes = self.read_csv(os.path.join(
-                self.directory, csv_name))
-            # resize them
-            a = self.target_size[0] / float(imgw)
-            b = self.target_size[1] / float(imgh)
-            bboxes = [self.resize_bb(bbox, a, b) for bbox in bboxes]
-
+                self.directory, csv_name), resize=True)
             try:
                 x_bbox = [bbox_to_array(
                     bbox, x_img, dim_ordering=self.dim_ordering) for bbox in bboxes]
@@ -514,8 +518,8 @@ class ImageBBoxDirectoryIterator(Iterator):
 
                     img = array_to_img(arr_bx, self.dim_ordering, scale=True)
                     draw = ImageDraw.Draw(img)
-                    bboxes = self.arr_to_bbox(arr_by,
-                                              imgsize=self.target_size)
+                    bboxes = self.decode_predictions(arr_by,
+                                                     isize=self.target_size)
                     for bbox in bboxes:
                         draw.rectangle(bbox)
                     fname = '{prefix}_{index}_{hash}.{format}'.format(prefix=self.save_prefix,
