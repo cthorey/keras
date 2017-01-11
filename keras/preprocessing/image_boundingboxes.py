@@ -18,17 +18,66 @@ shape  (nbatch,nbbox*5).   The  5  corresponds  to   x0,y0,x1,y1  +  a
 confidence score.
 '''
 
-
-from keras.preprocessing.image import ImageDataGenerator
-from keras.models import Model as KerasModel
+from .image import *
 from tqdm import *
 import numpy as np
 import os
-from keras.preprocessing.image import *
 from PIL import Image, ImageDraw
 import itertools
 import random
 import pandas as pd
+
+
+def to_categorical(y, nb_classes=None):
+    """Converts class vector (integers from 0 to nb_classes)
+    to binary class matrix, for use with categorical_crossentropy.
+    # Arguments
+        y: class vector to be converted into a matrix
+        nb_classes: total number of classes
+    # Returns
+        A binary matrix representation of the input.
+    """
+    y = np.array(y, dtype='int').ravel()
+    if not nb_classes:
+        nb_classes = np.max(y) + 1
+    n = y.shape[0]
+    categorical = np.zeros((n, nb_classes))
+    categorical[np.arange(n), y] = 1
+    return categorical
+
+
+def iou(boxi, boxj):
+    """
+    Compute intersection over union of two boxes
+    """
+    x0i, y0i, x1i, y1i = map(float, boxi)
+    x0j, y0j, x1j, y1j = map(float, boxj)
+
+    ymin_i = min(y0i, y1i)
+    xmin_i = min(x0i, x1i)
+    ymax_i = max(y0i, y1i)
+    xmax_i = max(x0i, x1i)
+
+    ymin_j = min(y0j, y1j)
+    xmin_j = min(x0j, x1j)
+    ymax_j = max(y0j, y1j)
+    xmax_j = max(x0j, x1j)
+
+    area_i = (ymax_i - ymin_i) * (xmax_i - xmin_i)
+    area_j = (ymax_j - ymin_j) * (xmax_j - xmin_j)
+    if (area_i <= 0 or area_j <= 0):
+        iou = 0.0
+    else:
+        intersection_ymin = max(ymin_i, ymin_j)
+        intersection_xmin = max(xmin_i, xmin_j)
+        intersection_ymax = min(ymax_i, ymax_j)
+        intersection_xmax = min(xmax_i, xmax_j)
+
+        a = max(intersection_ymax - intersection_ymin, 0.0)
+        b = max(intersection_xmax - intersection_xmin, 0.0)
+        intersection_area = a * b
+        iou = intersection_area / (area_i + area_j - intersection_area)
+    return iou
 
 
 def bbox_to_array(bbox, x, dim_ordering='tf'):
@@ -387,6 +436,8 @@ class ImageBBoxDirectoryIterator(Iterator):
                  batch_size=32,
                  shuffle=True,
                  seed=None,
+                 class_mode='categorical',
+                 classes=['pos', 'neg'],
                  save_to_dir=None,
                  save_prefix='',
                  save_format='jpeg', save_every=None):
@@ -397,6 +448,13 @@ class ImageBBoxDirectoryIterator(Iterator):
         self.directory = directory
         self.data_generator = data_generator
         self.target_size = tuple(target_size)
+        # class
+        self.class_mode = class_mode
+        assert self.class_mode in ['categorical', 'binary'], '{} not implemented'.format(
+            self.class_mode)
+        self.classes = classes
+        self.nb_class = len(classes)
+        self.class_indices = dict(pos=1, neg=0)
 
         assert self.target_size[
             0] % self.data_generator.ngrid == 0, 'The size of the grid has to be a multiple of target_size'
@@ -435,7 +493,6 @@ class ImageBBoxDirectoryIterator(Iterator):
     def read_csv(self, filename, resize=True):
         data = pd.read_csv(filename)
         # renormalize by the target_size
-        # check the data are normalized (1.1 to forbid some rounding error)
         if any(data['x0'] > 1.1) or any(data['x1'] > 1.1):
             raise ValueError(
                 'Csv file containing bbox coords  must be normalized')
@@ -467,6 +524,47 @@ class ImageBBoxDirectoryIterator(Iterator):
         bboxes = self.data_generator.arr2nlist(bboxes)
         return bboxes
 
+    def is_cinside(self, bbox1, bbox2):
+        """
+        Is center of bbox1 inside bbox2 ?
+        """
+        w2 = bbox2[2] - bbox2[0]
+        h2 = bbox2[3] - bbox2[1]
+        cbbox1 = np.array([(bbox1[0] + bbox1[2]) / 2.0,
+                           (bbox1[1] + bbox1[3]) / 2.0])
+        cbbox2 = np.array([(bbox2[0] + bbox2[2]) / 2.0,
+                           (bbox2[1] + bbox2[3]) / 2.0])
+        dcenter = np.abs(cbbox1 - cbbox2)
+        res = (dcenter[0] < w2 / 2.0) and (dcenter[1] < h2 / 2.0)
+        return res
+
+    def bboxs2pgrid(self, bboxes, isize, threshold_pos=0.3):
+        '''
+        Map the bboxes to a grid of probability
+        '''
+        # handle the case where bboxes in a list of 4 scalar
+        assert isize[0] == isize[1], 'img has to be squared'
+        ngrid = self.data_generator.ngrid
+        w, h = isize[0] / ngrid, isize[1] / ngrid
+        s = w
+        cells = np.zeros((len(bboxes), ngrid, ngrid))
+        grid = np.zeros((ngrid, ngrid, 4))
+        for k, bbox in enumerate(bboxes):
+            for idx, (i, j) in enumerate(itertools.product(*[range(ngrid), range(ngrid)])):
+                x0 = s * i
+                y0 = s * j
+                x1 = s * i + w
+                y1 = s * j + h
+                grid[i, j] = np.array([x0, y0, x1, y1])
+                # If is inside the cell, set to 1 otherwise compute the iou
+                if self.is_cinside(bbox, [x0, y0, x1, y1]):
+                    cells[k, i, j] = 1
+                else:
+                    cells[k, i, j] = iou(bbox, [x0, y0, x1, y1])
+        cells = np.max(cells, axis=0)
+        prob = (cells >= threshold_pos) * self.class_indices['pos']
+        return prob.flatten()
+
     def next(self):
         with self.lock:
             index_array, current_index, current_batch_size = next(
@@ -475,8 +573,13 @@ class ImageBBoxDirectoryIterator(Iterator):
         # done in parallel
         batch_x = np.zeros((current_batch_size,) + self.image_shape)
         s = self.data_generator.ngrid
-        batch_y = np.zeros(
+        batch_ybbox = np.zeros(
             (current_batch_size, s * s * 5))
+        if self.class_mode == 'binary':
+            batch_yclass = np.zeros((current_batch_size, s * s))
+        if self.class_mode == 'categorical':
+            batch_yclass = np.zeros((current_batch_size, s * s, 2))
+
         grayscale = self.color_mode == 'grayscale'
         # build batch of image data
         for i, j in enumerate(index_array):
@@ -501,12 +604,23 @@ class ImageBBoxDirectoryIterator(Iterator):
                     x_img, x_bbox)
                 x_bbox = [array_to_bbox(bbox) for bbox in x_bbox]
             except:
-                pass
+                x_bbox = bboxes
+            # gen the gris labels
+            x_labels = self.bboxs2pgrid(x_bbox,
+                                        self.target_size,
+                                        threshold_pos=0.3)
+
+            # standardize both image_bbox
             x_img = self.data_generator.standardize_img(x_img)
             x_bbox = self.data_generator.standardize_bbox(
                 bboxes, self.target_size)
-            batch_y[i] = x_bbox
             batch_x[i] = x_img
+            batch_ybbox[i] = x_bbox
+            if self.class_mode == 'binary':
+                batch_yclass[i] = x_labels
+            elif self.class_mode == 'categorical':
+                batch_yclass[i] = to_categorical(
+                    x_labels, nb_classes=self.nb_class)
 
             # optionally save augmented images to disk for debugging
             # purposes
@@ -518,7 +632,7 @@ class ImageBBoxDirectoryIterator(Iterator):
                         break
                 try:
                     arr_bx = np.copy(batch_x[i])
-                    arr_by = np.copy(batch_y[i])
+                    arr_by = np.copy(batch_ybbox[i])
 
                     img = array_to_img(arr_bx, self.dim_ordering, scale=True)
                     draw = ImageDraw.Draw(img)
@@ -535,4 +649,48 @@ class ImageBBoxDirectoryIterator(Iterator):
                 except:
                     pass
 
-        return batch_x, batch_y
+        return batch_x, dict(batch_ybbox=batch_ybbox, batch_yclass=batch_yclass)
+
+
+def inspect_iterator(bbox_iterator, x, y):
+    """
+    Inspection of the iterator
+    """
+    idx = np.random.choice(range(x.shape[0]))
+    ngrid = bbox_iterator.data_generator.ngrid
+    colors = dict(
+        zip([0, 1, 2], [(255, 255, 13), (2, 255, 255), (2, 2, 232)]))
+    img = Image.fromarray((255 * x[idx]).astype('uint8'))
+    draw = ImageDraw.Draw(img)
+    isize = img.size
+    pclass = y['batch_yclass'][idx]
+    if bbox_iterator.class_mode == 'categorical':
+        pclass = np.argmax(pclass, axis=1)
+    pclass = pclass.reshape(7, 7)
+
+    bbox = y['batch_ybbox'][idx].reshape(7, 7, 5)
+    gt_bboxes = bbox_iterator.decode_predictions(
+        y['batch_ybbox'][idx], isize=isize)
+    for i, j in itertools.product(range(ngrid), range(ngrid)):
+        w, h = isize[0] / ngrid, isize[1] / ngrid
+        s = w
+        x0 = s * i
+        y0 = s * j
+        x1 = x0 + w
+        y1 = y0 + h
+        draw.rectangle([x0, y0, x1, y1], outline=colors[0])
+    for i, j in itertools.product(range(ngrid), range(ngrid)):
+        w, h = isize[0] / ngrid, isize[1] / ngrid
+        s = w
+        x0 = s * i
+        y0 = s * j
+        x1 = x0 + w
+        y1 = y0 + h
+        if pclass[i, j] == 1:
+            draw.rectangle([x0, y0, x1, y1], outline=colors[1])
+            for gtb in gt_bboxes:
+                print(iou(gtb, [x0, y0, x1, y1]))
+
+    for bbox in gt_bboxes:
+        draw.rectangle(bbox)
+    return img
