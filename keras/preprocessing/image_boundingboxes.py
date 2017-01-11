@@ -649,7 +649,7 @@ class ImageBBoxDirectoryIterator(Iterator):
                 except:
                     pass
 
-        return batch_x, dict(batch_ybbox=batch_ybbox, batch_yclass=batch_yclass)
+        return batch_x, dict(reg_output=batch_ybbox, cls_output=batch_yclass)
 
 
 def inspect_iterator(bbox_iterator, x, y):
