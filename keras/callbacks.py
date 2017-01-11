@@ -317,6 +317,8 @@ class ModelCheckpoint(Callback):
             os.path.splitext(x)[0].split('-')[-1]), reverse=reverse)
         to_clean = weigths[self.keep_only_n:]
         for fname in to_clean:
+            print(self.mode)
+            print('Removing {}'.format(fname))
             os.remove(os.path.join(workdir, fname))
 
     def on_epoch_end(self, epoch, logs={}):
