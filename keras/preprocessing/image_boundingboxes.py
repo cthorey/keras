@@ -18,7 +18,8 @@ shape  (nbatch,nbbox*5).   The  5  corresponds  to   x0,y0,x1,y1  +  a
 confidence score.
 '''
 
-from .image import *
+from keras.preprocessing.image_classifier import *
+
 from tqdm import *
 import numpy as np
 import os
@@ -46,27 +47,21 @@ def to_categorical(y, nb_classes=None):
     return categorical
 
 
-def iou(boxi, boxj):
-    """
-    Compute intersection over union of two boxes
-    """
-    x0i, y0i, x1i, y1i = map(float, boxi)
-    x0j, y0j, x1j, y1j = map(float, boxj)
+def info_bbox(box):
+    x0, y0, x1, y1 = map(float, box)
+    ymin = min(y0, y1)
+    xmin = min(x0, x1)
+    ymax = max(y0, y1)
+    xmax = max(x0, x1)
+    area = (ymax - ymin) * (xmax - xmin)
+    return ymin, xmin, ymax, xmax, area
 
-    ymin_i = min(y0i, y1i)
-    xmin_i = min(x0i, x1i)
-    ymax_i = max(y0i, y1i)
-    xmax_i = max(x0i, x1i)
 
-    ymin_j = min(y0j, y1j)
-    xmin_j = min(x0j, x1j)
-    ymax_j = max(y0j, y1j)
-    xmax_j = max(x0j, x1j)
-
-    area_i = (ymax_i - ymin_i) * (xmax_i - xmin_i)
-    area_j = (ymax_j - ymin_j) * (xmax_j - xmin_j)
+def intersection(boxi, boxj):
+    ymin_i, xmin_i, ymax_i, xmax_i, area_i = info_bbox(boxi)
+    ymin_j, xmin_j, ymax_j, xmax_j, area_j = info_bbox(boxj)
     if (area_i <= 0 or area_j <= 0):
-        iou = 0.0
+        intersection_area = 0
     else:
         intersection_ymin = max(ymin_i, ymin_j)
         intersection_xmin = max(xmin_i, xmin_j)
@@ -76,6 +71,19 @@ def iou(boxi, boxj):
         a = max(intersection_ymax - intersection_ymin, 0.0)
         b = max(intersection_xmax - intersection_xmin, 0.0)
         intersection_area = a * b
+    return intersection_area
+
+
+def iou(boxi, boxj):
+    """
+    Compute intersection over union of two boxes
+    """
+    _, _, _, _, area_i = info_bbox(boxi)
+    _, _, _, _, area_j = info_bbox(boxj)
+    if (area_i <= 0 or area_j <= 0):
+        iou = 0.0
+    else:
+        intersection_area = intersection(boxi, boxj)
         iou = intersection_area / (area_i + area_j - intersection_area)
     return iou
 
@@ -281,7 +289,8 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
         if len(bboxes) > 0:
             for (i, j), bbox in bboxes:
                 arr[i, j, :] = np.array(bbox)
-        return arr.flatten()
+        s = arr.shape
+        return arr.reshape(s[0] * s[1], 5)
 
     def standardize_img(self, x):
         return self.standardize(x)
@@ -448,6 +457,13 @@ class ImageBBoxDirectoryIterator(Iterator):
         self.directory = directory
         self.data_generator = data_generator
         self.target_size = tuple(target_size)
+
+        # Feature map size
+        assert self.target_size[0] % 32 == 0
+        assert self.target_size[1] % 32 == 0
+        self.hfmap = self.target_size[0] / 32
+        self.wfmap = self.target_size[1] / 32
+
         # class
         self.class_mode = class_mode
         assert self.class_mode in ['categorical', 'binary'], '{} not implemented'.format(
@@ -513,16 +529,47 @@ class ImageBBoxDirectoryIterator(Iterator):
         decode the array
         """
         s = self.data_generator.ngrid
-        arr = arr.reshape(s, s, 5)
-        mask = [list(f) for f in list(np.argwhere(arr[:, :, 4] == 1.0))]
+        arr = arr.reshape(self.wfmap * self.hfmap, s, s, 5)
+        mask = [list(f) for f in list(np.argwhere(arr[:, :, :, 4] == 1.0))]
         bboxes = []
         for idx in mask:
-            dbbox = arr[idx[0], idx[1]]
+            if len(idx) == 2:
+                dbbox = arr[idx[0], idx[1]]
+            elif len(idx) == 3:
+                dbbox = arr[idx[0], idx[1], idx[2]]
+                idx = idx[1:]
             bboxes.append(
                 self.data_generator.darkcoord2bbox(dbbox, isize, *idx))
         bboxes = np.array(bboxes) * isize[0]
         bboxes = self.data_generator.arr2nlist(bboxes)
         return bboxes
+
+    def fulloverlap(self, boxi, boxj):
+        """
+        Is box contained in one another
+        """
+        _, _, _, _, area_i = info_bbox(boxi)
+        _, _, _, _, area_j = info_bbox(boxj)
+        if (area_i <= 0 or area_j <= 0):
+            res = False
+        else:
+            intersection_area = intersection(boxi, boxj)
+            res = intersection_area == area_i or intersection_area == area_j
+        return res
+
+    def ration_intercell(self, boxcell, boxgt, ratio=0.3):
+        """
+        Is box contained in one another
+        """
+        _, _, _, _, area_cell = info_bbox(boxcell)
+        _, _, _, _, area_gt = info_bbox(boxgt)
+        if (area_cell <= 0 or area_cell <= 0):
+            res = False
+        else:
+            intersection_area = intersection(boxcell, boxgt)
+            res = intersection_area / area_cell > ratio
+
+        return res
 
     def is_cinside(self, bbox1, bbox2):
         """
@@ -538,7 +585,7 @@ class ImageBBoxDirectoryIterator(Iterator):
         res = (dcenter[0] < w2 / 2.0) and (dcenter[1] < h2 / 2.0)
         return res
 
-    def bboxs2pgrid(self, bboxes, isize, threshold_pos=0.3):
+    def bboxs2pgrid(self, bboxes, isize, threshold_pos=0.2):
         '''
         Map the bboxes to a grid of probability
         '''
@@ -559,6 +606,10 @@ class ImageBBoxDirectoryIterator(Iterator):
                 # If is inside the cell, set to 1 otherwise compute the iou
                 if self.is_cinside(bbox, [x0, y0, x1, y1]):
                     cells[k, i, j] = 1
+                elif self.fulloverlap(bbox, [x0, y0, x1, y1]):
+                    cells[k, i, j] = 1
+                elif self.ration_intercell([x0, y0, x1, y1], bbox):
+                    cells[k, i, j] = 1
                 else:
                     cells[k, i, j] = iou(bbox, [x0, y0, x1, y1])
         cells = np.max(cells, axis=0)
@@ -574,11 +625,13 @@ class ImageBBoxDirectoryIterator(Iterator):
         batch_x = np.zeros((current_batch_size,) + self.image_shape)
         s = self.data_generator.ngrid
         batch_ybbox = np.zeros(
-            (current_batch_size, s * s * 5))
+            (current_batch_size, self.hfmap, self.wfmap, s * s, 5))
         if self.class_mode == 'binary':
-            batch_yclass = np.zeros((current_batch_size, s * s))
+            batch_yclass = np.zeros(
+                (current_batch_size, self.hfmap, self.wfmap, s * s))
         if self.class_mode == 'categorical':
-            batch_yclass = np.zeros((current_batch_size, s * s, 2))
+            batch_yclass = np.zeros(
+                (current_batch_size, self.hfmap, self.wfmap, s * s, 2))
 
         grayscale = self.color_mode == 'grayscale'
         # build batch of image data
@@ -615,15 +668,26 @@ class ImageBBoxDirectoryIterator(Iterator):
             x_bbox = self.data_generator.standardize_bbox(
                 bboxes, self.target_size)
             batch_x[i] = x_img
-            batch_ybbox[i] = x_bbox
+            batch_ybbox[i, :, :] = x_bbox
             if self.class_mode == 'binary':
-                batch_yclass[i] = x_labels
+                batch_yclass[i, :, :] = x_labels
             elif self.class_mode == 'categorical':
-                batch_yclass[i] = to_categorical(
+                yclass = to_categorical(
                     x_labels, nb_classes=self.nb_class)
+                batch_yclass[i, :, :] = yclass
 
-            # optionally save augmented images to disk for debugging
-            # purposes
+        # Flatten everything
+        batch_ybbox = batch_ybbox.reshape(
+            current_batch_size, np.prod(batch_ybbox.shape[1:-1]), 5)
+        if self.class_mode == 'binary':
+            batch_yclass = batch_yclass.reshape(
+                current_batch_size, np.prod(batch_yclass.shape[1:]))
+        elif self.class_mode == 'categorical':
+            batch_yclass = batch_yclass.reshape(
+                current_batch_size, np.prod(batch_yclass.shape[1:-1]), 2)
+
+        # optionally save augmented images to disk for debugging
+        # purposes
         if self.save_to_dir:
             for i in range(current_batch_size):
                 if self.save_every is not None:
@@ -652,25 +716,26 @@ class ImageBBoxDirectoryIterator(Iterator):
         return batch_x, dict(reg_output=batch_ybbox, cls_output=batch_yclass)
 
 
-def inspect_iterator(bbox_iterator, x, y):
+def inspect_iterator(bbox_iterator, x, y, verbose=False):
     """
     Inspection of the iterator
     """
     idx = np.random.choice(range(x.shape[0]))
     ngrid = bbox_iterator.data_generator.ngrid
+    hfmap = bbox_iterator.hfmap
+    wfmap = bbox_iterator.wfmap
     colors = dict(
         zip([0, 1, 2], [(255, 255, 13), (2, 255, 255), (2, 2, 232)]))
     img = Image.fromarray((255 * x[idx]).astype('uint8'))
     draw = ImageDraw.Draw(img)
     isize = img.size
-    pclass = y['batch_yclass'][idx]
+    pclass = y['cls_output'][idx]
+    print(pclass.shape)
     if bbox_iterator.class_mode == 'categorical':
-        pclass = np.argmax(pclass, axis=1)
-    pclass = pclass.reshape(7, 7)
-
-    bbox = y['batch_ybbox'][idx].reshape(7, 7, 5)
+        pclass = np.argmax(pclass, axis=- 1)
+    pclass = np.mean(pclass.reshape(hfmap * wfmap, 7, 7), axis=0)
     gt_bboxes = bbox_iterator.decode_predictions(
-        y['batch_ybbox'][idx], isize=isize)
+        y['reg_output'][idx], isize=isize)
     for i, j in itertools.product(range(ngrid), range(ngrid)):
         w, h = isize[0] / ngrid, isize[1] / ngrid
         s = w
@@ -689,7 +754,8 @@ def inspect_iterator(bbox_iterator, x, y):
         if pclass[i, j] == 1:
             draw.rectangle([x0, y0, x1, y1], outline=colors[1])
             for gtb in gt_bboxes:
-                print(iou(gtb, [x0, y0, x1, y1]))
+                if verbose:
+                    print(iou(gtb, [x0, y0, x1, y1]))
 
     for bbox in gt_bboxes:
         draw.rectangle(bbox)
