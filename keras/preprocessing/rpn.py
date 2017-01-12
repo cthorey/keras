@@ -18,7 +18,7 @@ shape  (nbatch,nbbox*5).   The  5  corresponds  to   x0,y0,x1,y1  +  a
 confidence score.
 '''
 
-from keras.preprocessing.image_classifier import *
+from .image import *
 
 from tqdm import *
 import numpy as np
@@ -162,7 +162,7 @@ def check_format_bbox(func):
     return func_wrapper
 
 
-class ImageBBoxDataGenerator(ImageDataGenerator):
+class RPNDataGenerator(ImageDataGenerator):
 
     '''
     Generate minibatches with real-time data augmentation. Apply the same transformation
@@ -211,7 +211,7 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
     def __init__(self,
                  ngrid=4,
                  *args, **kwargs):
-        super(ImageBBoxDataGenerator, self).__init__(*args, **kwargs)
+        super(RPNDataGenerator, self).__init__(*args, **kwargs)
         self.ngrid = ngrid
 
     def bbox2grid(self, bbox, isize):
@@ -398,7 +398,7 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
                             save_every=None,
                             save_prefix='',
                             save_format='jpeg'):
-        return ImageBBoxDirectoryIterator(
+        return RPNDirectoryIterator(
             directory,
             self,
             target_size=target_size,
@@ -413,7 +413,7 @@ class ImageBBoxDataGenerator(ImageDataGenerator):
             save_every=save_every)
 
 
-class ImageBBoxDirectoryIterator(Iterator):
+class RPNDirectoryIterator(Iterator):
     '''
     DirectoryIterator in the same idea than the one of the keras.
     However, the y is a set of bounding boxes
