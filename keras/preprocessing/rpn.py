@@ -1,21 +1,17 @@
 '''
 
 This  module   contains  code  that  extent   the  keras.preprocessing
-module. In particular, it proposes two classes that allow to generate
-min-batch of image + bboxes.
+module. In particular, generator/iterator to be used with a 
+RegionProposalNetwork 
 
 ```
-data_gen=ImageBBoxDataGenerator(nbbox=5,normalize_bbox=True,...)
-generator=data_gen.flow_from_directory('data/train',target_size=(224,244))
+d = Data('d4')
+gen = RPNDataGenerator(ngrid=7,rescale=1./255.)
+trainit = RPNDirectoryIterator(ojoin(d.data_folder,'train'),gen,target_size=(448,448),batch_size=10)
 
 for X_batch,y_batch in generator:
     do stuff
 ```
-
-I  just   implemented  the   flow  from   directory  method   for  the
-moment. X_batch has the shape  (nbatch,targetsize) and y_batch has the
-shape  (nbatch,nbbox*5).   The  5  corresponds  to   x0,y0,x1,y1  +  a
-confidence score.
 '''
 
 from .image import *
@@ -503,7 +499,7 @@ class RPNDirectoryIterator(Iterator):
         self.nb_sample = len(self.filenames)
         print('Found {} images'.format(self.nb_sample))
 
-        super(ImageBBoxDirectoryIterator, self).__init__(
+        super(RPNDirectoryIterator, self).__init__(
             self.nb_sample, batch_size, shuffle, seed)
 
     def read_csv(self, filename, resize=True):
