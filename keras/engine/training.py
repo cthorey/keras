@@ -1793,7 +1793,13 @@ class Model(Container):
             if n > N:
                 end = N - n
                 features = self.predict_on_batch(X_batch[:end])
-                labels = y_batch[:end]
+                if type(labels) == dict:
+                    nlabels = dict.fromkeys(labels.keys())
+                    for key, arr in labels.iteritems():
+                        nlabels[key] = arr[:end]
+                    labels = nlabels
+                else:
+                    labels = y_batch[:end]
                 yield features, labels
                 break
             features = self.predict_on_batch(X_batch)
