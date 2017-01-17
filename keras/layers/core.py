@@ -44,6 +44,7 @@ class Masking(Layer):
         model.add(LSTM(32))
     ```
     '''
+
     def __init__(self, mask_value=0., **kwargs):
         self.supports_masking = True
         self.mask_value = mask_value
@@ -74,6 +75,7 @@ class Dropout(Layer):
     # References
         - [Dropout: A Simple Way to Prevent Neural Networks from Overfitting](http://www.cs.toronto.edu/~rsalakhu/papers/srivastava14a.pdf)
     '''
+
     def __init__(self, p, **kwargs):
         self.p = p
         if 0. < self.p < 1.:
@@ -118,6 +120,7 @@ class SpatialDropout1D(Dropout):
     # References
         - [Efficient Object Localization Using Convolutional Networks](https://arxiv.org/pdf/1411.4280.pdf)
     '''
+
     def __init__(self, p, **kwargs):
         super(SpatialDropout1D, self).__init__(p, **kwargs)
 
@@ -156,6 +159,7 @@ class SpatialDropout2D(Dropout):
     # References
         - [Efficient Object Localization Using Convolutional Networks](https://arxiv.org/pdf/1411.4280.pdf)
     '''
+
     def __init__(self, p, dim_ordering='default', **kwargs):
         if dim_ordering == 'default':
             dim_ordering = K.image_dim_ordering()
@@ -204,6 +208,7 @@ class SpatialDropout3D(Dropout):
     # References
         - [Efficient Object Localization Using Convolutional Networks](https://arxiv.org/pdf/1411.4280.pdf)
     '''
+
     def __init__(self, p, dim_ordering='default', **kwargs):
         if dim_ordering == 'default':
             dim_ordering = K.image_dim_ordering()
@@ -238,6 +243,7 @@ class Activation(Layer):
     # Output shape
         Same shape as input.
     '''
+
     def __init__(self, activation, **kwargs):
         self.supports_masking = True
         self.activation = activations.get(activation)
@@ -282,6 +288,7 @@ class Reshape(Layer):
         # now: model.output_shape == (None, 6, 2)
     ```
     '''
+
     def __init__(self, target_shape, **kwargs):
         super(Reshape, self).__init__(**kwargs)
         self.target_shape = tuple(target_shape)
@@ -388,6 +395,7 @@ class Permute(Layer):
         Same as the input shape, but with the dimensions re-ordered according
         to the specified pattern.
     '''
+
     def __init__(self, dims, **kwargs):
         self.dims = tuple(dims)
         super(Permute, self).__init__(**kwargs)
@@ -397,7 +405,7 @@ class Permute(Layer):
         output_shape = copy.copy(input_shape)
         for i, dim in enumerate(self.dims):
             target_dim = input_shape[dim]
-            output_shape[i+1] = target_dim
+            output_shape[i + 1] = target_dim
         return tuple(output_shape)
 
     def call(self, x, mask=None):
@@ -425,6 +433,7 @@ class Flatten(Layer):
         # now: model.output_shape == (None, 65536)
     ```
     '''
+
     def __init__(self, **kwargs):
         self.input_spec = [InputSpec(ndim='3+')]
         super(Flatten, self).__init__(**kwargs)
@@ -467,6 +476,7 @@ class RepeatVector(Layer):
     # Output shape
         3D tensor of shape `(nb_samples, n, features)`.
     '''
+
     def __init__(self, n, **kwargs):
         self.n = n
         self.input_spec = [InputSpec(ndim=2)]
@@ -539,6 +549,7 @@ class Lambda(Layer):
     # Output shape
         Specified by `output_shape` argument.
     '''
+
     def __init__(self, function, output_shape=None, arguments=None, **kwargs):
         self.function = function
         self.arguments = arguments if arguments else {}
@@ -713,6 +724,7 @@ class Dense(Layer):
         For instance, for a 2D input with shape `(nb_samples, input_dim)`,
         the output would have shape `(nb_samples, output_dim)`.
     '''
+
     def __init__(self, output_dim, init='glorot_uniform',
                  activation=None, weights=None,
                  W_regularizer=None, b_regularizer=None, activity_regularizer=None,
@@ -808,6 +820,7 @@ class ActivityRegularization(Layer):
     # Output shape
         Same shape as input.
     '''
+
     def __init__(self, l1=0., l2=0., **kwargs):
         self.supports_masking = True
         self.l1 = l1
@@ -873,6 +886,7 @@ class MaxoutDense(Layer):
     # References
         - [Maxout Networks](http://arxiv.org/pdf/1302.4389.pdf)
     '''
+
     def __init__(self, output_dim,
                  nb_feature=4,
                  init='glorot_uniform',
@@ -999,6 +1013,7 @@ class Highway(Layer):
     # References
         - [Highway Networks](http://arxiv.org/pdf/1505.00387v2.pdf)
     '''
+
     def __init__(self,
                  init='glorot_uniform',
                  activation=None,
@@ -1223,12 +1238,14 @@ class TimeDistributedDense(Layer):
                 input_length = K.shape(x)[1]
 
         # Squash samples and timesteps into a single axis
-        x = K.reshape(x, (-1, input_shape[-1]))  # (samples * timesteps, input_dim)
+        # (samples * timesteps, input_dim)
+        x = K.reshape(x, (-1, input_shape[-1]))
         y = K.dot(x, self.W)  # (samples * timesteps, output_dim)
         if self.bias:
             y += self.b
         # We have to reshape Y to (samples, timesteps, output_dim)
-        y = K.reshape(y, (-1, input_length, self.output_dim))  # (samples, timesteps, output_dim)
+        # (samples, timesteps, output_dim)
+        y = K.reshape(y, (-1, input_length, self.output_dim))
         y = self.activation(y)
         return y
 
@@ -1246,3 +1263,25 @@ class TimeDistributedDense(Layer):
                   'input_length': self.input_length}
         base_config = super(TimeDistributedDense, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
+# custom
+
+
+class Softmax4D(Layer):
+
+    def __init__(self, axis=-1, **kwargs):
+        self.axis = axis
+        super(Softmax4D, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        pass
+
+    def call(self, x, mask=None):
+        s = K.shape(x)
+        softmax = K.tensorflow_backend.tf.nn.softmax(x, dim=self.axis)
+        red = K.reshape(softmax, (s[0], s[-1]))
+        return red
+
+    def get_output_shape_for(self, input_shape):
+        s = input_shape
+        return (s[0], s[-1])
