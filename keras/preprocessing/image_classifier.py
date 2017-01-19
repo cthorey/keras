@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 import itertools
 import random
 import pandas as pd
-from keras.applications import vgg16
+from keras import applications as bmodel
 
 
 class ClassifierImageGenerator(ImageDataGenerator):
@@ -24,10 +24,10 @@ class ClassifierImageGenerator(ImageDataGenerator):
     of the paper on VGG16.
     '''
 
-    def __init__(self, vgg_preprocessing=False, add_channel=False, *args, **kwargs):
+    def __init__(self, bmodel_preprocessing=None, add_channel=False, *args, **kwargs):
         super(ClassifierImageGenerator, self).__init__(*args, **kwargs)
         self.add_channel = add_channel
-        self.vgg_preprocessing = vgg_preprocessing
+        self.bmodel_preprocessing = bmodel_preprocessing
 
     def standardize(self, x):
         if self.rescale:
@@ -54,8 +54,10 @@ class ClassifierImageGenerator(ImageDataGenerator):
             x = np.reshape(whitex, (x.shape[0], x.shape[1], x.shape[2]))
         # Add our custome stuff
         # vgg prerpocessing
-        if self.vgg_preprocessing:
-            x = vgg16.preprocess_input(x)
+        if self.bmodel_preprocessing is not None:
+            module = getattr(bmodel, self.bmodel_preprocessing.lower())
+            x = getattr(module, 'preprocess_input')(x)
+
         # add_channel to gray images
         if x.shape[img_channel_index] == 1:
             x = x.transpose(2, 0, 1)
