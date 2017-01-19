@@ -28,8 +28,9 @@ class ClassifierImageGenerator(ImageDataGenerator):
         super(ClassifierImageGenerator, self).__init__(*args, **kwargs)
         self.add_channel = add_channel
         self.bmodel_preprocessing = bmodel_preprocessing
-        assert hasattr(bmodel, self.bmodel_preprocessing), '{} preprocessing  not available'.format(
-            self.bmodel_preprocessing)
+        if bmodel_preprocessing is not None:
+            assert hasattr(bmodel, self.bmodel_preprocessing), '{} preprocessing  not available'.format(
+                self.bmodel_preprocessing)
 
     def standardize(self, x):
         if self.rescale:
