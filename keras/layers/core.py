@@ -1277,11 +1277,8 @@ class Softmax4D(Layer):
         pass
 
     def call(self, x, mask=None):
-        s = K.shape(x)
         softmax = K.tensorflow_backend.tf.nn.softmax(x, dim=self.axis)
-        red = K.reshape(softmax, (s[0], s[-1]))
-        return red
+        return softmax
 
     def get_output_shape_for(self, input_shape):
-        s = input_shape
-        return (s[0], s[-1])
+        return input_shape
