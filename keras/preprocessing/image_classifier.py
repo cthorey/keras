@@ -211,7 +211,7 @@ class ClassifierDirectoryIterator(Iterator):
         super(ClassifierDirectoryIterator, self).__init__(
             self.nb_sample, batch_size, shuffle, seed)
 
-    @try_until_success
+    # @try_until_success
     def get_batch_x(self, j):
         fname = self.filenames[j]
         grayscale = self.color_mode == 'grayscale' or self.color_mode == 'grayscale_augmented'
