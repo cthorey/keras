@@ -13,7 +13,7 @@ from six.moves import range
 import os
 import threading
 import warnings
-
+from .. import applications as bmodel
 from .. import backend as K
 
 
@@ -205,6 +205,7 @@ class ImageDataGenerator(object):
     real-time data augmentation.
 
     # Arguments
+        bmodel_preprocessing: Applied the preprocessing of the base model
         featurewise_center: set input mean to 0 over the dataset.
         samplewise_center: set each sample mean to 0.
         featurewise_std_normalization: divide inputs by std of the dataset.
@@ -240,6 +241,7 @@ class ImageDataGenerator(object):
     '''
 
     def __init__(self,
+                 bmodel_preprocessing=None,
                  featurewise_center=False,
                  samplewise_center=False,
                  featurewise_std_normalization=False,
@@ -351,6 +353,13 @@ class ImageDataGenerator(object):
                               '`zca_whitening`, but it hasn\'t'
                               'been fit on any training data. Fit it '
                               'first by calling `.fit(numpy_data)`.')
+        if self.bmodel_preprocessing is not None:
+            module = getattr(bmodel, self.bmodel_preprocessing.lower())
+            s = x.shape
+            x = np.expand_dims(x, axis=0)
+            x = getattr(module, 'preprocess_input')(x)
+            x = x.reshape(s)
+
         return x
 
     def random_transform(self, x):

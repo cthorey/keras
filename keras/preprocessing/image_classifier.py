@@ -3,8 +3,7 @@ Contains a set of class/method that are built on top of keras
 library.
 
 '''
-from keras.preprocessing.image import *
-from keras.models import Model as KerasModel
+from .image import *
 from tqdm import *
 import numpy as np
 import os
@@ -15,7 +14,6 @@ from PIL import Image, ImageDraw
 import itertools
 import random
 import pandas as pd
-from keras import applications as bmodel
 
 
 class ClassifierImageGenerator(ImageDataGenerator):
@@ -24,7 +22,7 @@ class ClassifierImageGenerator(ImageDataGenerator):
     of the paper on VGG16.
     '''
 
-    def __init__(self, bmodel_preprocessing=None, add_channel=False, *args, **kwargs):
+    def __init__(self, add_channel=False, *args, **kwargs):
         super(ClassifierImageGenerator, self).__init__(*args, **kwargs)
         self.add_channel = add_channel
         self.bmodel_preprocessing = bmodel_preprocessing
