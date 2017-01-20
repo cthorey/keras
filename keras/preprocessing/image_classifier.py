@@ -59,7 +59,10 @@ class ClassifierImageGenerator(ImageDataGenerator):
         # vgg prerpocessing
         if self.bmodel_preprocessing is not None:
             module = getattr(bmodel, self.bmodel_preprocessing.lower())
+            s = x.shape
+            x = np.expand_dims(x, axis=0)
             x = getattr(module, 'preprocess_input')(x)
+            x = x.reshape(s)
 
         # add_channel to gray images
         if x.shape[img_channel_index] == 1:
