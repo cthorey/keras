@@ -1713,16 +1713,11 @@ class Model(Container):
                                            weights=weights))
             return averages
 
-    def predict_generator(self, generator,
-                          val_samples,
-                          max_q_size=10,
-                          nb_worker=1,
-                          return_yt=False,
-                          pickle_safe=False):
+    def predict_generator(self, generator, val_samples,
+                          max_q_size=10, nb_worker=1, pickle_safe=False):
         """Generates predictions for the input samples from a data generator.
         The generator should return the same kind of data as accepted by
         `predict_on_batch`.
-
         # Arguments
             generator: generator yielding batches of input samples.
             val_samples: total number of samples to generate from `generator`
@@ -1730,7 +1725,6 @@ class Model(Container):
             max_q_size: maximum size for the generator queue
             nb_worker: maximum number of processes to spin up
                 when using process based threading
-            return_yt: If True, return the ground Truth
             pickle_safe: if True, use process based threading.
                 Note that because
                 this implementation relies on multiprocessing,
@@ -1738,7 +1732,6 @@ class Model(Container):
                 non picklable arguments to the generator
                 as they can't be passed
                 easily to children processes.
-
         # Returns
             Numpy array(s) of predictions.
         """
@@ -1747,8 +1740,6 @@ class Model(Container):
         processed_samples = 0
         wait_time = 0.01
         all_outs = []
-        if return_yt:
-            all_yt = []
 
         enqueuer = None
 
@@ -1780,8 +1771,6 @@ class Model(Container):
                     x = generator_output
 
                 outs = self.predict_on_batch(x)
-                if return_yt:
-                    yt = y
 
                 if isinstance(x, list):
                     nb_samples = len(x[0])
@@ -1797,15 +1786,10 @@ class Model(Container):
                     for out in outs:
                         shape = (val_samples,) + out.shape[1:]
                         all_outs.append(np.zeros(shape, dtype=K.floatx()))
-                        if return_yt:
-                            all_yt.append(np.zeros(shape, dtype=K.floatx()))
 
                 for i, out in enumerate(outs):
                     all_outs[i][processed_samples:(
                         processed_samples + nb_samples)] = out
-                    if return_yt:
-                        all_yt[i][processed_samples:(
-                            processed_samples + nb_samples)] = yt
                 processed_samples += nb_samples
 
         finally:
@@ -1813,46 +1797,5 @@ class Model(Container):
                 enqueuer.stop()
 
         if len(all_outs) == 1:
-            output = all_outs[0]
-            if return_yt:
-                output = final, all_yt[0]
-            return final
-
-        output = all_outs
-        if return_yt:
-            output = output, all_yt
-
-        return output
-
-    def forward_pass_from_generator(self, generator, N):
-        '''
-        Customize the forward pass to ease the dumping
-        of features from an architecture (egg: VGG16).
-        To use instead of **predict_generator**.
-
-        In contrast to predict_generator, this method return not
-        only the prediction, but also the labels, a dictionary that
-        maps the label to their indices and the class mode
-        use.
-
-        '''
-        # forward pass
-        n = 0
-        for i, batch in enumerate(generator):
-            X_batch, y_batch = batch
-            n += X_batch.shape[0]
-            if n > N:
-                end = N - n
-                features = self.predict_on_batch(X_batch[:end])
-                if type(labels) == dict:
-                    nlabels = dict.fromkeys(labels.keys())
-                    for key, arr in labels.iteritems():
-                        nlabels[key] = arr[:end]
-                    labels = nlabels
-                else:
-                    labels = y_batch[:end]
-                yield features, labels
-                break
-            features = self.predict_on_batch(X_batch)
-            labels = y_batch
-            yield features, labels
+            return all_outs[0]
+        return all_outs
