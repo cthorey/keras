@@ -1713,8 +1713,12 @@ class Model(Container):
                                            weights=weights))
             return averages
 
-    def predict_generator(self, generator, val_samples,
-                          max_q_size=10, nb_worker=1, pickle_safe=False):
+    def predict_generator(self, generator,
+                          val_samples,
+                          max_q_size=10,
+                          nb_worker=1,
+                          return_yt=False,
+                          pickle_safe=False):
         """Generates predictions for the input samples from a data generator.
         The generator should return the same kind of data as accepted by
         `predict_on_batch`.
@@ -1726,6 +1730,7 @@ class Model(Container):
             max_q_size: maximum size for the generator queue
             nb_worker: maximum number of processes to spin up
                 when using process based threading
+            return_yt: If True, return the ground Truth
             pickle_safe: if True, use process based threading.
                 Note that because
                 this implementation relies on multiprocessing,
@@ -1742,6 +1747,8 @@ class Model(Container):
         processed_samples = 0
         wait_time = 0.01
         all_outs = []
+        if return_yt:
+            all_yt = []
 
         enqueuer = None
 
@@ -1773,6 +1780,8 @@ class Model(Container):
                     x = generator_output
 
                 outs = self.predict_on_batch(x)
+                if return_yt:
+                    yt = y
 
                 if isinstance(x, list):
                     nb_samples = len(x[0])
@@ -1788,10 +1797,15 @@ class Model(Container):
                     for out in outs:
                         shape = (val_samples,) + out.shape[1:]
                         all_outs.append(np.zeros(shape, dtype=K.floatx()))
+                        if return_yt:
+                            all_yt.append(np.zeros(shape, dtype=K.floatx()))
 
                 for i, out in enumerate(outs):
                     all_outs[i][processed_samples:(
                         processed_samples + nb_samples)] = out
+                    if return_yt:
+                        all_yt[i][processed_samples:(
+                            processed_samples + nb_samples)] = yt
                 processed_samples += nb_samples
 
         finally:
@@ -1799,8 +1813,16 @@ class Model(Container):
                 enqueuer.stop()
 
         if len(all_outs) == 1:
-            return all_outs[0]
-        return all_outs
+            output = all_outs[0]
+            if return_yt:
+                output = final, all_yt[0]
+            return final
+
+        output = all_outs
+        if return_yt:
+            output = output, all_yt
+
+        return output
 
     def forward_pass_from_generator(self, generator, N):
         '''
